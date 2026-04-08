@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meeting Cost</title>
+<title>CallCost</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://appssdk.zoom.us/sdk.js"></script>
@@ -183,6 +183,22 @@ body {
   -moz-appearance: textfield;
 }
 
+.salary-toggle {
+  width: 34px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: var(--t3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color .15s;
+}
+
+.salary-toggle:hover { color: var(--text); }
+
 .salary-input-wrap input::-webkit-outer-spin-button,
 .salary-input-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; }
 
@@ -218,16 +234,6 @@ body {
 .days-input::-webkit-inner-spin-button { -webkit-appearance: none; }
 
 .days-input:focus { border-color: var(--b3); }
-
-.formula-hint {
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--t3);
-  text-align: center;
-  margin-bottom: 20px;
-  line-height: 1.7;
-  width: 100%;
-}
 
 .btn-continue {
   font-family: var(--font);
@@ -484,7 +490,14 @@ body {
     <span class="field-label">Зарплата в месяц</span>
     <div class="salary-input-wrap">
       <span class="salary-sym">₽</span>
-      <input type="number" id="salaryInput" placeholder="120 000" min="0" oninput="onSalaryChange()">
+      <input type="password" id="salaryInput" inputmode="numeric" autocomplete="off" placeholder="120000" oninput="onSalaryChange()">
+      <button type="button" class="salary-toggle" id="salaryToggle" onclick="toggleSalaryVisibility()" aria-label="Показать зарплату">
+        <svg id="salaryToggleIcon" width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M1.5 8c1.8-3 4.1-4.5 6.5-4.5S12.7 5 14.5 8c-1.8 3-4.1 4.5-6.5 4.5S3.3 11 1.5 8Z" stroke="currentColor" stroke-width="1.2"/>
+          <circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M2 14 14 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+      </button>
       <span class="salary-unit">/мес</span>
     </div>
   </div>
@@ -492,10 +505,6 @@ body {
   <div class="days-row" style="max-width:300px;">
     <span class="days-label">Рабочих дней в месяце</span>
     <input type="number" class="days-input" id="workDays" value="21" min="1" max="31" oninput="onSalaryChange()">
-  </div>
-
-  <div class="formula-hint" id="formulaHint" style="max-width:300px;">
-    введи зарплату — покажем расчёт
   </div>
 
   <button class="btn-continue" id="btnContinue" onclick="enterMeter()" disabled style="max-width:300px;">
@@ -511,7 +520,7 @@ body {
         <circle cx="7" cy="7" r="6" stroke="#f5a623" stroke-width="1.2"/>
         <path d="M7 4v3.5L9 9" stroke="#f5a623" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
-      Meeting Cost
+      CallCost
     </div>
     <div class="pill">
       <div class="dot" id="dot"></div>
@@ -576,6 +585,7 @@ let elapsed = 0;
 let running = false;
 let startTs = null;
 let iv = null;
+let salaryVisible = false;
 
 // Peers map: { uuid → { cost, lastSeen, num } }
 let peers = {};
@@ -586,25 +596,13 @@ try { bc = new BroadcastChannel(CHANNEL); } catch(e) {}
 
 // ── Salary screen ──────────────────────────────────────
 function onSalaryChange() {
-  const sal = parseFloat(document.getElementById('salaryInput').value) || 0;
-  const days = parseInt(document.getElementById('workDays').value) || 21;
+  const sal = getSalaryValue();
   const btn = document.getElementById('btnContinue');
   btn.disabled = sal <= 0;
-
-  if (sal > 0) {
-    const perDay = sal / days;
-    const perHour = perDay / 8;
-    const perMin = perHour / 60;
-    const perSec = perMin / 60;
-    document.getElementById('formulaHint').innerHTML =
-      `${fmt(sal)} ÷ ${days} дней ÷ 8 ч ÷ 3600 сек\n= ${perSec.toFixed(4)} ₽ в секунду`;
-  } else {
-    document.getElementById('formulaHint').textContent = 'введи зарплату — покажем расчёт';
-  }
 }
 
 function enterMeter() {
-  const sal = parseFloat(document.getElementById('salaryInput').value) || 0;
+  const sal = getSalaryValue();
   const days = parseInt(document.getElementById('workDays').value) || 21;
   if (sal <= 0) return;
 
@@ -627,6 +625,25 @@ function changeSalary() {
   document.getElementById('workDays').value = days;
   onSalaryChange();
   showScreen('screenSalary');
+}
+
+function getSalaryValue() {
+  const raw = document.getElementById('salaryInput').value.replace(/[^\d.,]/g, '').replace(',', '.');
+  return parseFloat(raw) || 0;
+}
+
+function toggleSalaryVisibility() {
+  salaryVisible = !salaryVisible;
+  const input = document.getElementById('salaryInput');
+  const icon = document.getElementById('salaryToggleIcon');
+  const btn = document.getElementById('salaryToggle');
+
+  input.type = salaryVisible ? 'text' : 'password';
+  btn.setAttribute('aria-label', salaryVisible ? 'Скрыть зарплату' : 'Показать зарплату');
+
+  icon.innerHTML = salaryVisible
+    ? '<path d="M1.5 8c1.8-3 4.1-4.5 6.5-4.5S12.7 5 14.5 8c-1.8 3-4.1 4.5-6.5 4.5S3.3 11 1.5 8Z" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.2"/>'
+    : '<path d="M1.5 8c1.8-3 4.1-4.5 6.5-4.5S12.7 5 14.5 8c-1.8 3-4.1 4.5-6.5 4.5S3.3 11 1.5 8Z" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.2"/><path d="M2 14 14 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>';
 }
 
 // Pre-fill if returning user
