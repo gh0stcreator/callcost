@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meeting Cost</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://appssdk.zoom.us/sdk.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f11;
+  --s1: #18181c;
+  --s2: #202025;
+  --s3: #28282e;
+  --b1: rgba(255,255,255,0.06);
+  --b2: rgba(255,255,255,0.11);
+  --b3: rgba(255,255,255,0.18);
+  --text: #f0ede8;
+  --t2: #9996a3;
+  --t3: #5c5966;
+  --amber: #f5a623;
+  --amber2: rgba(245,166,35,0.13);
+  --amber3: rgba(245,166,35,0.22);
+  --green: #4caf7d;
+  --red: #e05252;
+  --blue: rgba(100,149,255,0.12);
+  --blue-text: #8aabff;
+  --font: 'Syne', sans-serif;
+  --mono: 'DM Mono', monospace;
+  --r: 8px;
+  --r2: 12px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  width: 360px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* ── Screens ── */
+.screen { display: none; flex-direction: column; flex: 1; }
+.screen.active { display: flex; }
+
+/* ── Header ── */
+.hdr {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--b1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--t2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--t3);
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--t3); flex-shrink: 0; }
+.dot.run { background: var(--green); animation: blink 1.2s ease-in-out infinite; }
+.dot.pause { background: var(--amber); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── SALARY SCREEN ── */
+#screenSalary {
+  align-items: center;
+  justify-content: center;
+  padding: 28px 20px 32px;
+  gap: 0;
+}
+
+.lock-icon {
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  background: var(--s2);
+  border: 1px solid var(--b2);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+
+.salary-title {
+  font-size: 18px; font-weight: 600;
+  text-align: center;
+  line-height: 1.3;
+  margin-bottom: 8px;
+}
+
+.privacy-note {
+  font-size: 12px;
+  color: var(--t2);
+  text-align: center;
+  line-height: 1.6;
+  max-width: 240px;
+  margin-bottom: 28px;
+}
+
+.privacy-badge {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--blue);
+  border: 1px solid rgba(100,149,255,0.18);
+  border-radius: var(--r2);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--blue-text);
+  margin-bottom: 24px;
+  width: 100%;
+  line-height: 1.5;
+}
+
+.salary-field {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.field-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.salary-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--s2);
+  border: 1px solid var(--b2);
+  border-radius: var(--r);
+  padding: 0 14px;
+  transition: border-color .15s;
+}
+
+.salary-input-wrap:focus-within {
+  border-color: var(--b3);
+}
+
+.salary-sym {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--t3);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.salary-input-wrap input {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 400;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  outline: none;
+  width: 100%;
+  padding: 12px 0;
+  -moz-appearance: textfield;
+}
+
+.salary-input-wrap input::-webkit-outer-spin-button,
+.salary-input-wrap input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.salary-unit {
+  font-size: 11px;
+  color: var(--t3);
+  flex-shrink: 0;
+}
+
+.days-row {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.days-label { font-size: 12px; color: var(--t2); }
+
+.days-input {
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--s2);
+  border: 1px solid var(--b2);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 12px;
+  outline: none;
+  width: 72px;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.days-input::-webkit-outer-spin-button,
+.days-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.days-input:focus { border-color: var(--b3); }
+
+.formula-hint {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t3);
+  text-align: center;
+  margin-bottom: 20px;
+  line-height: 1.7;
+  width: 100%;
+}
+
+.btn-continue {
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 600;
+  width: 100%;
+  padding: 13px;
+  background: var(--amber);
+  border: none;
+  border-radius: var(--r);
+  color: #1a1400;
+  cursor: pointer;
+  transition: opacity .15s;
+  letter-spacing: .03em;
+}
+
+.btn-continue:hover { opacity: .88; }
+.btn-continue:disabled { opacity: .35; cursor: not-allowed; }
+
+/* ── METER SCREEN ── */
+#screenMeter { padding: 0; }
+
+.meter-area {
+  padding: 22px 16px 18px;
+  text-align: center;
+  border-bottom: 1px solid var(--b1);
+  flex-shrink: 0;
+}
+
+.meter-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 8px;
+}
+
+.meter-value {
+  font-family: var(--mono);
+  font-size: 58px;
+  font-weight: 300;
+  letter-spacing: -.02em;
+  line-height: 1;
+  color: var(--text);
+  transition: color .4s;
+}
+
+.meter-value.run { color: var(--amber); }
+
+.mcur {
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--t2);
+  vertical-align: super;
+  margin-right: 3px;
+}
+
+.meta {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 11px;
+}
+
+.meta-item {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t2);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* My contribution */
+.my-contribution {
+  margin: 12px 16px;
+  background: var(--s2);
+  border: 1px solid var(--b1);
+  border-radius: var(--r);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.my-contrib-label {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px;
+  color: var(--t2);
+}
+
+.my-contrib-value {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--amber);
+}
+
+.my-contrib-hint {
+  font-size: 10px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+
+/* Participants counter */
+.participants-count {
+  margin: 0 16px 12px;
+  font-size: 11px;
+  color: var(--t3);
+  text-align: center;
+}
+
+/* Controls */
+.controls {
+  padding: 0 16px 16px;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--r);
+  padding: 10px 0;
+  cursor: pointer;
+  border: 1px solid var(--b2);
+  transition: all .15s;
+  flex: 1;
+  letter-spacing: .04em;
+  color: var(--text);
+  background: var(--s2);
+}
+
+.btn:hover { background: var(--s3); }
+.btn:disabled { opacity: .3; cursor: not-allowed; }
+
+.btn-start { background: var(--green); border-color: var(--green); color: #fff; }
+.btn-start:hover { opacity: .85; background: var(--green); }
+
+.btn-pause { background: var(--amber2); border-color: rgba(245,166,35,.28); color: var(--amber); }
+.btn-pause:hover { background: var(--amber3); }
+
+.btn-sm { flex: 0 0 auto; padding: 10px 14px; color: var(--t2); background: transparent; border-color: var(--b1); }
+.btn-sm:hover { color: var(--text); background: var(--s2); }
+
+/* change salary link */
+.change-link {
+  font-size: 11px;
+  color: var(--t3);
+  text-align: center;
+  padding: 10px 16px 16px;
+  cursor: pointer;
+  transition: color .15s;
+  flex-shrink: 0;
+}
+
+.change-link:hover { color: var(--t2); }
+
+/* Peers bar */
+.peers-section {
+  flex: 1;
+  padding: 12px 16px;
+  border-top: 1px solid var(--b1);
+  overflow-y: auto;
+}
+
+.peers-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 12px;
+}
+
+.peers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.peer-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: var(--r);
+  animation: appear .2s ease;
+}
+
+@keyframes appear { from { opacity:0; transform:translateY(-4px) } to { opacity:1; transform:none } }
+
+.peer-avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--s3);
+  border: 1px solid var(--b2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: var(--t2);
+  flex-shrink: 0;
+}
+
+.peer-label { flex: 1; font-size: 12px; color: var(--t2); }
+
+.peer-cost {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 16px; left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--s2); border: 1px solid var(--b2);
+  color: var(--text); font-size: 12px;
+  padding: 8px 16px; border-radius: 7px;
+  opacity: 0; transition: all .2s;
+  pointer-events: none; white-space: nowrap; z-index: 99;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ SCREEN: SALARY INPUT ══════════════ -->
+<div id="screenSalary" class="screen active">
+  <div class="lock-icon">
+    <svg width="20" height="22" viewBox="0 0 20 22" fill="none">
+      <rect x="3" y="10" width="14" height="11" rx="2.5" stroke="#9996a3" stroke-width="1.4"/>
+      <path d="M7 10V7a3 3 0 0 1 6 0v3" stroke="#9996a3" stroke-width="1.4" stroke-linecap="round"/>
+      <circle cx="10" cy="15.5" r="1.5" fill="#9996a3"/>
+    </svg>
+  </div>
+
+  <div class="salary-title">Сколько ты получаешь?</div>
+  <div class="privacy-note">Это нужно только для подсчёта стоимости звонка</div>
+
+  <div class="privacy-badge" style="width:100%;max-width:300px;">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex-shrink:0">
+      <path d="M8 1.5L2 4.5v4c0 3 2.5 5.5 6 6 3.5-.5 6-3 6-6v-4L8 1.5z" stroke="#8aabff" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M5.5 8l2 2 3-3" stroke="#8aabff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Твоя зарплата видна только тебе. Другие участники видят только общую сумму звонка.
+  </div>
+
+  <div class="salary-field" style="width:100%;max-width:300px;">
+    <span class="field-label">Зарплата в месяц</span>
+    <div class="salary-input-wrap">
+      <span class="salary-sym">₽</span>
+      <input type="number" id="salaryInput" placeholder="120 000" min="0" oninput="onSalaryChange()">
+      <span class="salary-unit">/мес</span>
+    </div>
+  </div>
+
+  <div class="days-row" style="max-width:300px;">
+    <span class="days-label">Рабочих дней в месяце</span>
+    <input type="number" class="days-input" id="workDays" value="21" min="1" max="31" oninput="onSalaryChange()">
+  </div>
+
+  <div class="formula-hint" id="formulaHint" style="max-width:300px;">
+    введи зарплату — покажем расчёт
+  </div>
+
+  <button class="btn-continue" id="btnContinue" onclick="enterMeter()" disabled style="max-width:300px;">
+    Войти в звонок →
+  </button>
+</div>
+
+<!-- ══════════════ SCREEN: METER ══════════════ -->
+<div id="screenMeter" class="screen">
+  <div class="hdr">
+    <div class="logo">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+        <circle cx="7" cy="7" r="6" stroke="#f5a623" stroke-width="1.2"/>
+        <path d="M7 4v3.5L9 9" stroke="#f5a623" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      Meeting Cost
+    </div>
+    <div class="pill">
+      <div class="dot" id="dot"></div>
+      <span id="statusTxt">Стоп</span>
+    </div>
+  </div>
+
+  <div class="meter-area">
+    <div class="meter-label">Стоимость звонка</div>
+    <div class="meter-value" id="meterVal">
+      <span class="mcur">₽</span><span id="totalNum">0.00</span>
+    </div>
+    <div class="meta">
+      <div class="meta-item">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M6 3.5V6L7.5 7.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+        <span id="durDisp">00:00:00</span>
+      </div>
+      <div class="meta-item">
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="1.1"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.1"/><path d="M10 4H7.5M4.5 8H2" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+        <span id="peersCount">0 чел.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- My contribution -->
+  <div class="my-contribution">
+    <div>
+      <div class="my-contrib-label">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="2" y="5.5" width="10" height="7" rx="2" stroke="#5c5966" stroke-width="1.2"/><path d="M5 5.5V4a2 2 0 0 1 4 0v1.5" stroke="#5c5966" stroke-width="1.2" stroke-linecap="round"/></svg>
+        Твой вклад
+      </div>
+      <div class="my-contrib-hint">только ты это видишь</div>
+    </div>
+    <div class="my-contrib-value" id="myContrib">₽0.00</div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-start" id="btnStart" onclick="startTimer()">▶ Старт</button>
+    <button class="btn btn-pause" id="btnPause" onclick="pauseTimer()" disabled>⏸ Пауза</button>
+    <button class="btn btn-sm" onclick="resetTimer()">Сброс</button>
+  </div>
+
+  <div class="peers-section">
+    <div class="peers-title">Участники звонка</div>
+    <div class="peers-list" id="peersList"></div>
+  </div>
+
+  <div class="change-link" onclick="changeSalary()">
+    ↺ Изменить мою зарплату
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+const MY_ID = 'u_' + Math.random().toString(36).slice(2, 9);
+const CHANNEL = 'mcm_v2_' + (new URLSearchParams(location.search).get('r') || 'demo');
+
+let myRatePerSec = 0;  // ← ONLY stored locally, never broadcast
+let elapsed = 0;
+let running = false;
+let startTs = null;
+let iv = null;
+
+// Peers map: { uuid → { cost, lastSeen, num } }
+let peers = {};
+let myNum = 1;
+
+let bc;
+try { bc = new BroadcastChannel(CHANNEL); } catch(e) {}
+
+// ── Salary screen ──────────────────────────────────────
+function onSalaryChange() {
+  const sal = parseFloat(document.getElementById('salaryInput').value) || 0;
+  const days = parseInt(document.getElementById('workDays').value) || 21;
+  const btn = document.getElementById('btnContinue');
+  btn.disabled = sal <= 0;
+
+  if (sal > 0) {
+    const perDay = sal / days;
+    const perHour = perDay / 8;
+    const perMin = perHour / 60;
+    const perSec = perMin / 60;
+    document.getElementById('formulaHint').innerHTML =
+      `${fmt(sal)} ÷ ${days} дней ÷ 8 ч ÷ 3600 сек\n= ${perSec.toFixed(4)} ₽ в секунду`;
+  } else {
+    document.getElementById('formulaHint').textContent = 'введи зарплату — покажем расчёт';
+  }
+}
+
+function enterMeter() {
+  const sal = parseFloat(document.getElementById('salaryInput').value) || 0;
+  const days = parseInt(document.getElementById('workDays').value) || 21;
+  if (sal <= 0) return;
+
+  myRatePerSec = sal / days / 8 / 3600;
+  localStorage.setItem('mcm_salary', sal);
+  localStorage.setItem('mcm_days', days);
+
+  showScreen('screenMeter');
+  announce();
+  requestState();
+
+  // Try Zoom SDK
+  initZoom();
+}
+
+function changeSalary() {
+  const saved = localStorage.getItem('mcm_salary') || '';
+  const days = localStorage.getItem('mcm_days') || '21';
+  document.getElementById('salaryInput').value = saved;
+  document.getElementById('workDays').value = days;
+  onSalaryChange();
+  showScreen('screenSalary');
+}
+
+// Pre-fill if returning user
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('mcm_salary');
+  if (saved) {
+    document.getElementById('salaryInput').value = saved;
+    document.getElementById('workDays').value = localStorage.getItem('mcm_days') || '21';
+    onSalaryChange();
+  }
+});
+
+// ── BroadcastChannel protocol ──────────────────────────
+// We NEVER send salary or rate.
+// We send: { type, uuid, num, cost, running, elapsed, startTs }
+
+if (bc) {
+  bc.onmessage = e => {
+    const d = e.data;
+    if (d.uuid === MY_ID) return;
+
+    if (d.type === 'cost') {
+      peers[d.uuid] = { cost: d.cost, lastSeen: Date.now(), num: d.num || '?' };
+      renderPeers();
+    }
+
+    if (d.type === 'announce') {
+      peers[d.uuid] = { cost: 0, lastSeen: Date.now(), num: d.num || '?' };
+      // assign sequential number
+      const nums = Object.values(peers).map(p => p.num);
+      myNum = Math.max(0, ...nums) + 1;
+      renderPeers();
+      sendMyState(); // respond with current state
+    }
+
+    if (d.type === 'requestState') {
+      sendMyState();
+    }
+
+    if (d.type === 'timerStart' && !running) {
+      elapsed = d.elapsed || 0;
+      startTs = Date.now() - elapsed * 1000;
+      running = true;
+      clearInterval(iv);
+      iv = setInterval(tick, 100);
+      setTimerUI(true);
+    }
+
+    if (d.type === 'timerPause') {
+      elapsed = d.elapsed || elapsed;
+      running = false;
+      clearInterval(iv);
+      setTimerUI(false);
+      updateUI();
+    }
+
+    if (d.type === 'timerReset') {
+      elapsed = 0; running = false; startTs = null;
+      clearInterval(iv);
+      setTimerUI(false);
+      updateUI();
+      peers = {};
+      renderPeers();
+    }
+  };
+}
+
+function announce() {
+  broadcast({ type: 'announce', num: myNum });
+}
+
+function requestState() {
+  broadcast({ type: 'requestState' });
+}
+
+function sendMyState() {
+  if (myRatePerSec <= 0) return;
+  const myCost = myRatePerSec * elapsed;
+  broadcast({ type: 'cost', cost: myCost, num: myNum });
+}
+
+function broadcast(obj) {
+  if (!bc) return;
+  try { bc.postMessage({ ...obj, uuid: MY_ID }); } catch(e) {}
+}
+
+// ── Timer ──────────────────────────────────────────────
+function startTimer() {
+  if (myRatePerSec <= 0) { showToast('Сначала войди в звонок'); return; }
+  running = true;
+  startTs = Date.now() - elapsed * 1000;
+  clearInterval(iv);
+  iv = setInterval(tick, 100);
+  setTimerUI(true);
+  broadcast({ type: 'timerStart', elapsed });
+}
+
+function pauseTimer() {
+  running = false;
+  clearInterval(iv);
+  setTimerUI(false);
+  broadcast({ type: 'timerPause', elapsed });
+  updateUI();
+}
+
+function resetTimer() {
+  running = false; elapsed = 0; startTs = null;
+  clearInterval(iv);
+  setTimerUI(false);
+  updateUI();
+  broadcast({ type: 'timerReset' });
+  peers = {};
+  renderPeers();
+}
+
+function tick() {
+  if (!startTs) return;
+  elapsed = (Date.now() - startTs) / 1000;
+  updateUI();
+  // Broadcast my cost every ~2 seconds
+  if (Math.floor(elapsed * 10) % 20 === 0) sendMyState();
+}
+
+// ── UI ─────────────────────────────────────────────────
+function updateUI() {
+  const myCost = myRatePerSec * elapsed;
+  // total = my cost + all peers' costs
+  const peerTotal = Object.values(peers).reduce((s, p) => s + (p.cost || 0), 0);
+  const total = myCost + peerTotal;
+  const peerCount = Object.keys(peers).length;
+
+  document.getElementById('totalNum').textContent = fmt(total);
+  document.getElementById('durDisp').textContent = fmtDur(elapsed);
+  document.getElementById('myContrib').textContent = '₽' + fmt(myCost);
+  document.getElementById('peersCount').textContent = (peerCount + 1) + ' чел.';
+
+  const mv = document.getElementById('meterVal');
+  mv.className = 'meter-value' + (running ? ' run' : '');
+}
+
+function setTimerUI(isRunning) {
+  document.getElementById('btnStart').disabled = isRunning;
+  document.getElementById('btnPause').disabled = !isRunning;
+  const dot = document.getElementById('dot');
+  dot.className = 'dot' + (isRunning ? ' run' : elapsed > 0 ? ' pause' : '');
+  document.getElementById('statusTxt').textContent = isRunning ? 'Идёт' : (elapsed > 0 ? 'Пауза' : 'Стоп');
+}
+
+function renderPeers() {
+  const list = document.getElementById('peersList');
+  const now = Date.now();
+  // Remove stale peers (no heartbeat for 8s)
+  Object.keys(peers).forEach(id => {
+    if (now - peers[id].lastSeen > 8000) delete peers[id];
+  });
+
+  const entries = Object.entries(peers);
+  document.getElementById('peersCount').textContent = (entries.length + 1) + ' чел.';
+
+  if (!entries.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--t3);padding:8px 0;">Ожидаем других участников…</div>';
+    return;
+  }
+
+  list.innerHTML = entries.map(([id, p]) => `
+    <div class="peer-item">
+      <div class="peer-avatar">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 12c0-2.5 2.2-4 5-4s5 1.5 5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="peer-label">Участник ${p.num}</div>
+      <div class="peer-cost">${fmt(p.cost || 0)} ₽</div>
+    </div>
+  `).join('');
+
+  updateUI();
+}
+
+// ── Utils ──────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function fmt(v) {
+  return (v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '\u202f');
+}
+
+function fmtDur(s) {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+  return [h, m, sec].map(v => String(v).padStart(2, '0')).join(':');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── Zoom SDK ──────────────────────────────────────────
+async function initZoom() {
+  try {
+    await zoomSdk.config({
+      capabilities: ['getMeetingContext', 'getMeetingParticipants'],
+      version: '0.16'
+    });
+  } catch(e) {
+    // Not inside Zoom – running standalone, that's fine
+  }
+}
+
+// Heartbeat: re-send my cost so peers know I'm alive
+setInterval(() => {
+  if (myRatePerSec > 0) sendMyState();
+}, 3000);
+</script>
+</body>
+</html>
