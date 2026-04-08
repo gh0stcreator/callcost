@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CallCost Documentation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f11;
+    --surface: #18181c;
+    --surface-2: #202025;
+    --border: rgba(255,255,255,0.08);
+    --text: #f0ede8;
+    --muted: #a6a2ad;
+    --accent: #f5a623;
+    --link: #8aabff;
+    --font: 'Syne', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    line-height: 1.65;
+  }
+
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px 64px;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: clamp(34px, 6vw, 54px);
+    line-height: 1.05;
+  }
+
+  .meta {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: linear-gradient(180deg, var(--surface), var(--surface-2));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 20px;
+    margin-top: 18px;
+  }
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: 22px;
+  }
+
+  p, li {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  ol, ul {
+    margin: 10px 0 0 22px;
+    padding: 0;
+  }
+
+  a {
+    color: var(--link);
+  }
+
+  .nav {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+  }
+
+  .nav a {
+    text-decoration: none;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+  }
+</style>
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">CallCost</div>
+    <h1>Documentation</h1>
+    <div class="meta">Zoom-specific setup and usage guide</div>
+
+    <section class="card">
+      <h2>What CallCost Does</h2>
+      <p>CallCost is a Zoom app that estimates the live cost of a meeting based on user-entered salary data. It is designed to run inside the Zoom meeting interface.</p>
+    </section>
+
+    <section class="card">
+      <h2>How to Add the App</h2>
+      <ol>
+        <li>Open the CallCost app listing in Zoom App Marketplace.</li>
+        <li>Click <strong>Add</strong> to install the app to your Zoom account.</li>
+        <li>Complete the authorization flow if Zoom asks for confirmation.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>How to Open the App in Zoom</h2>
+      <ol>
+        <li>Open the Zoom desktop client and join or start a meeting.</li>
+        <li>Click <strong>Apps</strong> in the Zoom meeting toolbar.</li>
+        <li>Search for <strong>CallCost</strong> and open it.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>How to Use the App</h2>
+      <ol>
+        <li>Enter your salary and working day settings.</li>
+        <li>Enter the meeting view and start the timer.</li>
+        <li>Use <strong>Start</strong>, <strong>Pause</strong>, and <strong>Reset</strong> to control the counter.</li>
+        <li>Review the estimated meeting cost and your own contribution inside the Zoom app panel.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>How to Remove the App</h2>
+      <ol>
+        <li>Open Zoom App Marketplace.</li>
+        <li>Open the CallCost app listing.</li>
+        <li>Choose the installed app options and remove the app from your account.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <h2>Support and Legal</h2>
+      <ul>
+        <li>Support: <a href="/support.html">Support</a></li>
+        <li>Privacy Policy: <a href="/privacy.html">Privacy Policy</a></li>
+        <li>Terms of Use: <a href="/terms.html">Terms of Use</a></li>
+      </ul>
+    </section>
+
+    <nav class="nav">
+      <a href="/index.html">Open App</a>
+      <a href="/support.html">Support</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Use</a>
+    </nav>
+  </main>
+</body>
+</html>
