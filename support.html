@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CallCost Support</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f11;
+    --surface: #18181c;
+    --surface-2: #202025;
+    --border: rgba(255,255,255,0.08);
+    --text: #f0ede8;
+    --muted: #a6a2ad;
+    --accent: #f5a623;
+    --link: #8aabff;
+    --font: 'Syne', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    line-height: 1.65;
+  }
+
+  .page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 20px 64px;
+  }
+
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    margin: 0 0 10px;
+    font-size: clamp(34px, 6vw, 54px);
+    line-height: 1.05;
+  }
+
+  .meta {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .card {
+    background: linear-gradient(180deg, var(--surface), var(--surface-2));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 20px;
+    margin-top: 18px;
+  }
+
+  h2 {
+    margin: 0 0 10px;
+    font-size: 22px;
+  }
+
+  p, li {
+    color: var(--muted);
+    font-size: 16px;
+  }
+
+  ul {
+    margin: 10px 0 0 20px;
+    padding: 0;
+  }
+
+  a {
+    color: var(--link);
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.95em;
+  }
+
+  .nav {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+  }
+
+  .nav a {
+    text-decoration: none;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+  }
+</style>
+</head>
+<body>
+  <main class="page">
+    <div class="eyebrow">CallCost</div>
+    <h1>Support</h1>
+    <div class="meta">Support for installation, app behavior, privacy questions, and bug reports.</div>
+
+    <section class="card">
+      <h2>How to Get Help</h2>
+      <p>For support requests, bug reports, or feedback, please use the GitHub repository issues page:</p>
+      <p><a href="https://github.com/gh0stcreator/callcost/issues">https://github.com/gh0stcreator/callcost/issues</a></p>
+    </section>
+
+    <section class="card">
+      <h2>What to Include</h2>
+      <ul>
+        <li>A short description of the problem.</li>
+        <li>What you expected to happen.</li>
+        <li>What actually happened.</li>
+        <li>Your Zoom client type and, if relevant, screenshots.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Common Topics</h2>
+      <ul>
+        <li>App not appearing inside Zoom Apps.</li>
+        <li>Meeting cost counter not updating as expected.</li>
+        <li>Questions about local salary storage on the device.</li>
+        <li>General privacy or terms questions.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>Related Pages</h2>
+      <p>Privacy details: <a href="/privacy.html">Privacy Policy</a></p>
+      <p>Usage terms: <a href="/terms.html">Terms of Use</a></p>
+    </section>
+
+    <nav class="nav">
+      <a href="/index.html">Open App</a>
+      <a href="/privacy.html">Privacy Policy</a>
+      <a href="/terms.html">Terms of Use</a>
+    </nav>
+  </main>
+</body>
+</html>
