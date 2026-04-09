@@ -726,8 +726,8 @@
       const CLIENT_ID_KEY = "callcost:client-id:v1";
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
-      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-09-c";
+      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") !== "0";
+      const BUILD_ID = "2026-04-09-d";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -885,42 +885,7 @@
         return getParticipantAmount(state.salary, state.running, state.startedAt, state.elapsedMs);
       }
 
-      function shouldUseSharedMode() {
-        return (
-          isMeetingRoomResolved() &&
-          Number.isFinite(state.meetingParticipantsCount) &&
-          state.meetingParticipantsCount >= 2
-        );
-      }
-
-      function getTotalAmount() {
-        if (!shouldUseSharedMode()) {
-          state.peers = {};
-          return getLocalAmount();
-        }
-        let total = getLocalAmount();
-        const now = Date.now();
-        Object.keys(state.peers).forEach((peerId) => {
-          const peer = state.peers[peerId];
-          if (!peer) return;
-          const freshnessMark = Math.max(
-            Number(peer.updatedAt) || 0,
-            Number(peer.lastSeen) || 0
-          );
-          if (now - freshnessMark > REMOTE_SNAPSHOT_TTL_MS) {
-            delete state.peers[peerId];
-            return;
-          }
-          total += getParticipantAmount(peer.salary, peer.running, peer.startedAt, peer.elapsedMs);
-        });
-        return total;
-      }
-
-      function getActivePeerCount() {
-        if (!shouldUseSharedMode()) {
-          state.peers = {};
-          return 0;
-        }
+      function pruneStalePeers() {
         const now = Date.now();
         Object.keys(state.peers).forEach((peerId) => {
           const peer = state.peers[peerId];
@@ -935,8 +900,42 @@
         return Object.keys(state.peers).length;
       }
 
+      function shouldSyncPresence() {
+        return isMeetingRoomResolved();
+      }
+
+      function shouldUseSharedTotals() {
+        if (!isMeetingRoomResolved()) return false;
+        const activePeers = pruneStalePeers();
+        if (state.meetingParticipantsCount >= 2) return true;
+        if (state.meetingParticipantsCount === 0 && activePeers > 0) return true;
+        return false;
+      }
+
+      function getTotalAmount() {
+        if (!shouldUseSharedTotals()) {
+          state.peers = {};
+          return getLocalAmount();
+        }
+        let total = getLocalAmount();
+        Object.keys(state.peers).forEach((peerId) => {
+          const peer = state.peers[peerId];
+          if (!peer) return;
+          total += getParticipantAmount(peer.salary, peer.running, peer.startedAt, peer.elapsedMs);
+        });
+        return total;
+      }
+
+      function getActivePeerCount() {
+        if (!isMeetingRoomResolved()) {
+          state.peers = {};
+          return 0;
+        }
+        return pruneStalePeers();
+      }
+
       function getSyncDebugText(totalAmount) {
-        const sharedMode = shouldUseSharedMode();
+        const sharedMode = shouldUseSharedTotals();
         const peers = getActivePeerCount();
         const meeting = state.meetingParticipantsCount || 0;
         const localSalaries = state.salary > 0 ? [state.salary] : [];
@@ -1066,13 +1065,13 @@
       }
 
       function publishPresence() {
-        if (!shouldUseSharedMode()) return;
+        if (!shouldSyncPresence()) return;
         broadcastSnapshot();
         publishFirebaseSnapshot();
       }
 
       function setupBroadcastSync() {
-        if (!shouldUseSharedMode()) return;
+        if (!shouldSyncPresence()) return;
         try {
           if (bc) bc.close();
           bc = new BroadcastChannel(`callcost:${state.roomId}`);
@@ -1089,7 +1088,7 @@
       }
 
       function setupFirebaseSync() {
-        if (!shouldUseSharedMode()) return;
+        if (!shouldSyncPresence()) return;
         if (!FIREBASE_CONFIG) return;
         if (window.firebase) {
           try {
@@ -1153,13 +1152,10 @@
         clearInterval(meetingParticipantsPollHandle);
         if (!zoomSdkApi?.getMeetingParticipants) {
           state.meetingParticipantsCount = 0;
-          stopSync();
-          state.peers = {};
           return;
         }
 
         const updateCount = async () => {
-          const previousSharedMode = shouldUseSharedMode();
           try {
             const payload = await zoomSdkApi.getMeetingParticipants();
             state.meetingParticipantsCount = Array.isArray(payload?.participants)
@@ -1177,15 +1173,6 @@
             }
           } catch {
             return;
-          }
-
-          const nextSharedMode = shouldUseSharedMode();
-          if (previousSharedMode !== nextSharedMode) {
-            stopSync();
-            state.peers = {};
-            setupBroadcastSync();
-            setupFirebaseSync();
-            publishPresence();
           }
         };
 
