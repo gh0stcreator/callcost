@@ -1091,6 +1091,8 @@
         if (state.hint === nextHint && !immediate) return;
 
         if (immediate) {
+          clearTimeout(hintFadeHandle);
+          hintFadeHandle = null;
           state.hint = nextHint;
           refs.amountHint.textContent = nextHint;
           refs.amountHint.classList.remove("is-fading");
@@ -1099,6 +1101,15 @@
         }
 
         const now = Date.now();
+        if (hintFadeHandle) {
+          state.hint = nextHint;
+          refs.amountHint.textContent = nextHint;
+          refs.amountHint.classList.remove("is-fading");
+          clearTimeout(hintFadeHandle);
+          hintFadeHandle = null;
+          lastHintSwapAt = now;
+          return;
+        }
         if (now - lastHintSwapAt < HINT_MIN_SWAP_MS) {
           return;
         }
@@ -1110,6 +1121,7 @@
           refs.amountHint.textContent = nextHint;
           refs.amountHint.classList.remove("is-fading");
           lastHintSwapAt = Date.now();
+          hintFadeHandle = null;
           persist();
         }, HINT_FADE_MS);
       }
