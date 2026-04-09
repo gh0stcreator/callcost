@@ -667,7 +667,7 @@
           class="start-button"
           type="button"
         >
-          Начать
+          Сохранить
         </button>
       </section>
 
@@ -984,6 +984,10 @@
         return `participants_${ids.join("_").slice(0, 120)}`.replace(/[.#$/[\]]/g, "_");
       }
 
+      function isMeetingRoomResolved(roomId = state.roomId) {
+        return Boolean(roomId && roomId !== "local-room");
+      }
+
       function upsertPeer(peerId, payload, source) {
         if (!peerId || peerId === state.clientId || !payload) return;
         const updatedAt = Number(payload.updatedAt) || Date.now();
@@ -1040,11 +1044,13 @@
       }
 
       function publishPresence() {
+        if (!isMeetingRoomResolved()) return;
         broadcastSnapshot();
         publishFirebaseSnapshot();
       }
 
       function setupBroadcastSync() {
+        if (!isMeetingRoomResolved()) return;
         try {
           if (bc) bc.close();
           bc = new BroadcastChannel(`callcost:${state.roomId}`);
@@ -1061,6 +1067,7 @@
       }
 
       function setupFirebaseSync() {
+        if (!isMeetingRoomResolved()) return;
         if (!FIREBASE_CONFIG) return;
         if (window.firebase) {
           try {
@@ -1133,6 +1140,16 @@
             state.meetingParticipantsCount = Array.isArray(payload?.participants)
               ? payload.participants.length
               : 0;
+            if (!isMeetingRoomResolved()) {
+              const roomFromParticipants = getRoomIdFromParticipants(payload);
+              if (roomFromParticipants) {
+                state.roomId = roomFromParticipants;
+                stopSync();
+                setupBroadcastSync();
+                setupFirebaseSync();
+                publishPresence();
+              }
+            }
           } catch {
             state.meetingParticipantsCount = 0;
           }
