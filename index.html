@@ -702,6 +702,7 @@
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 100;
+      const HINT_MIN_SWAP_MS = 1200;
       const DIGIT_REVEAL_MS = 700;
       const PRESENCE_TTL_MS = 8000;
       const DEFAULT_HINT = "или 1 кофе 3 в 1…";
@@ -770,6 +771,7 @@
       let revealMaskHandle = null;
       let syncPulseHandle = null;
       let resetConfirmArmed = false;
+      let lastHintSwapAt = 0;
       let bc = null;
       let firebaseDb = null;
       let firebaseParticipantsRef = null;
@@ -1092,6 +1094,12 @@
           state.hint = nextHint;
           refs.amountHint.textContent = nextHint;
           refs.amountHint.classList.remove("is-fading");
+          lastHintSwapAt = Date.now();
+          return;
+        }
+
+        const now = Date.now();
+        if (now - lastHintSwapAt < HINT_MIN_SWAP_MS) {
           return;
         }
 
@@ -1101,6 +1109,7 @@
           state.hint = nextHint;
           refs.amountHint.textContent = nextHint;
           refs.amountHint.classList.remove("is-fading");
+          lastHintSwapAt = Date.now();
           persist();
         }, HINT_FADE_MS);
       }
