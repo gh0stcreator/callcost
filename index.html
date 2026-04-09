@@ -726,13 +726,14 @@
       const CLIENT_ID_KEY = "callcost:client-id:v1";
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
-      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
+      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") !== "0";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
       const HINT_MIN_SWAP_MS = 1200;
       const DIGIT_REVEAL_MS = 700;
       const PRESENCE_TTL_MS = 8000;
+      const REMOTE_SNAPSHOT_TTL_MS = 12000;
       const DEFAULT_HINT = "или 1 кофе 3 в 1…";
       const FIREBASE_CONFIG = window.CALLCOST_FIREBASE_CONFIG || null;
       const state = {
@@ -746,6 +747,7 @@
         revealUntil: 0,
         clientId: "",
         roomId: "local-room",
+        meetingParticipantsCount: 0,
         peers: {},
       };
       const refs = {
@@ -812,6 +814,7 @@
       let firebaseSelfRef = null;
       let firebaseRestBaseUrl = null;
       let firebaseRestPollHandle = null;
+      let meetingParticipantsPollHandle = null;
       let syncBackend = "none";
 
       function updateViewportScale() {
@@ -887,7 +890,11 @@
         Object.keys(state.peers).forEach((peerId) => {
           const peer = state.peers[peerId];
           if (!peer) return;
-          if (now - (peer.lastSeen || 0) > PRESENCE_TTL_MS) {
+          const freshnessMark = Math.max(
+            Number(peer.updatedAt) || 0,
+            Number(peer.lastSeen) || 0
+          );
+          if (now - freshnessMark > REMOTE_SNAPSHOT_TTL_MS) {
             delete state.peers[peerId];
             return;
           }
@@ -900,20 +907,37 @@
         const now = Date.now();
         Object.keys(state.peers).forEach((peerId) => {
           const peer = state.peers[peerId];
-          if (!peer || now - (peer.lastSeen || 0) > PRESENCE_TTL_MS) {
+          const freshnessMark = Math.max(
+            Number(peer?.updatedAt) || 0,
+            Number(peer?.lastSeen) || 0
+          );
+          if (!peer || now - freshnessMark > REMOTE_SNAPSHOT_TTL_MS) {
             delete state.peers[peerId];
           }
         });
         return Object.keys(state.peers).length;
       }
 
-      function getSyncDebugText() {
+      function getSyncDebugText(totalAmount) {
         const peers = getActivePeerCount();
+        const meeting = state.meetingParticipantsCount || 0;
+        const localSalaries = state.salary > 0 ? [state.salary] : [];
+        const peerSalaries = Object.values(state.peers)
+          .map((peer) => Number(peer.salary) || 0)
+          .filter((salary) => salary > 0);
+        const allSalaries = [...localSalaries, ...peerSalaries];
+        const totalSalary = allSalaries.reduce((sum, salary) => sum + salary, 0);
+        const salaryList = allSalaries.length
+          ? allSalaries
+              .slice(0, 6)
+              .map((salary) => formatMoney(salary))
+              .join("+")
+          : "0";
         const room =
           state.roomId === "local-room"
             ? "local-room"
             : `${state.roomId.slice(0, 10)}…`;
-        return `sync: ${peers + 1} чел · fb:${syncBackend === "none" ? "off" : "on"} · room:${room}`;
+        return `meet:${meeting} · app:${peers + 1} · salaries:${salaryList} · sum:${formatMoney(totalSalary)} · total:${formatMoney(totalAmount)} · fb:${syncBackend === "none" ? "off" : "on"} · room:${room}`;
       }
 
       function getClientId() {
@@ -962,11 +986,14 @@
 
       function upsertPeer(peerId, payload, source) {
         if (!peerId || peerId === state.clientId || !payload) return;
+        const updatedAt = Number(payload.updatedAt) || Date.now();
+        if (Date.now() - updatedAt > REMOTE_SNAPSHOT_TTL_MS) return;
         state.peers[peerId] = {
           salary: Number(payload.salary) || 0,
           running: Boolean(payload.running),
           startedAt: payload.startedAt ? Number(payload.startedAt) : null,
           elapsedMs: Number(payload.elapsedMs) || 0,
+          updatedAt,
           source,
           lastSeen: Date.now(),
         };
@@ -1077,6 +1104,28 @@
         publishFirebaseSnapshot();
       }
 
+      function startMeetingParticipantsPoll() {
+        clearInterval(meetingParticipantsPollHandle);
+        if (!zoomSdkApi?.getMeetingParticipants) {
+          state.meetingParticipantsCount = 0;
+          return;
+        }
+
+        const updateCount = async () => {
+          try {
+            const payload = await zoomSdkApi.getMeetingParticipants();
+            state.meetingParticipantsCount = Array.isArray(payload?.participants)
+              ? payload.participants.length
+              : 0;
+          } catch {
+            state.meetingParticipantsCount = 0;
+          }
+        };
+
+        updateCount();
+        meetingParticipantsPollHandle = window.setInterval(updateCount, 4000);
+      }
+
       async function initPresenceSync() {
         state.clientId = getClientId();
         let roomId = "";
@@ -1101,6 +1150,7 @@
         state.roomId = roomId || "local-room";
         setupBroadcastSync();
         setupFirebaseSync();
+        startMeetingParticipantsPoll();
       }
 
       function stopSync() {
@@ -1129,6 +1179,8 @@
         }
         clearInterval(firebaseRestPollHandle);
         firebaseRestPollHandle = null;
+        clearInterval(meetingParticipantsPollHandle);
+        meetingParticipantsPollHandle = null;
         syncBackend = "none";
       }
 
@@ -1313,7 +1365,7 @@
         setHint(getHint(amount));
         refs.syncDebug.hidden = !DEBUG_MODE;
         if (DEBUG_MODE) {
-          refs.syncDebug.textContent = getSyncDebugText();
+          refs.syncDebug.textContent = getSyncDebugText(amount);
         }
 
         if (state.running) {
