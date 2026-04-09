@@ -878,7 +878,6 @@
           context?.meetingUuid ||
           context?.meetingId ||
           context?.mid ||
-          context?.sid ||
           "";
         if (!meetingUUID) return "local-room";
         return String(meetingUUID).replace(/[.#$/[\]]/g, "_");
