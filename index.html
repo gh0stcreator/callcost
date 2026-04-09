@@ -9,6 +9,19 @@
     />
     <title>CallCost</title>
     <script src="https://appssdk.zoom.us/sdk.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
+    <script>
+      window.CALLCOST_FIREBASE_CONFIG = {
+        apiKey: "AIzaSyB2tT1kPe_P4t5SjvgcCVXhDwYqD_suuiM",
+        authDomain: "callcost-1b8ca.firebaseapp.com",
+        databaseURL: "https://callcost-1b8ca-default-rtdb.firebaseio.com",
+        projectId: "callcost-1b8ca",
+        storageBucket: "callcost-1b8ca.firebasestorage.app",
+        messagingSenderId: "176802009623",
+        appId: "1:176802009623:web:c5d40d2f2f63976b2bc252",
+      };
+    </script>
     <link
       rel="preconnect"
       href="https://fonts.googleapis.com"
@@ -667,11 +680,14 @@
     <script>
       const zoomSdkApi = window.zoomSdk;
       const STORAGE_KEY = "callcost:v6";
+      const CLIENT_ID_KEY = "callcost:client-id:v1";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 100;
       const DIGIT_REVEAL_MS = 700;
+      const PRESENCE_TTL_MS = 8000;
       const DEFAULT_HINT = "или 1 кофе 3 в 1…";
+      const FIREBASE_CONFIG = window.CALLCOST_FIREBASE_CONFIG || null;
       const state = {
         salary: 0,
         editing: false,
@@ -681,6 +697,9 @@
         hint: DEFAULT_HINT,
         forceSalaryScreen: false,
         revealUntil: 0,
+        clientId: "",
+        roomId: "local-room",
+        peers: {},
       };
       const refs = {
         menuButton: document.getElementById("menuButton"),
@@ -731,7 +750,12 @@
       let tickHandle = null;
       let hintFadeHandle = null;
       let revealMaskHandle = null;
+      let syncPulseHandle = null;
       let resetConfirmArmed = false;
+      let bc = null;
+      let firebaseDb = null;
+      let firebaseParticipantsRef = null;
+      let firebaseSelfRef = null;
 
       function normalizeSalary(value) {
         const digits = String(value).replace(/\D+/g, "");
@@ -781,9 +805,169 @@
         return state.elapsedMs + (Date.now() - state.startedAt);
       }
 
-      function getAmount() {
-        if (!state.salary) return 0;
-        return (state.salary / WORK_SECONDS_IN_MONTH) * (getElapsedMs() / 1000);
+      function getParticipantAmount(salary, running, startedAt, elapsedMs) {
+        if (!salary) return 0;
+        const baseElapsed = Number(elapsedMs) || 0;
+        const liveElapsed = running && startedAt ? Math.max(0, Date.now() - Number(startedAt)) : 0;
+        const totalElapsed = baseElapsed + liveElapsed;
+        return (salary / WORK_SECONDS_IN_MONTH) * (totalElapsed / 1000);
+      }
+
+      function getLocalAmount() {
+        return getParticipantAmount(state.salary, state.running, state.startedAt, state.elapsedMs);
+      }
+
+      function getTotalAmount() {
+        let total = getLocalAmount();
+        const now = Date.now();
+        Object.keys(state.peers).forEach((peerId) => {
+          const peer = state.peers[peerId];
+          if (!peer) return;
+          if (now - (peer.lastSeen || 0) > PRESENCE_TTL_MS) {
+            delete state.peers[peerId];
+            return;
+          }
+          total += getParticipantAmount(peer.salary, peer.running, peer.startedAt, peer.elapsedMs);
+        });
+        return total;
+      }
+
+      function getClientId() {
+        const existing = localStorage.getItem(CLIENT_ID_KEY);
+        if (existing) return existing;
+        const fresh = `u_${Math.random().toString(36).slice(2, 10)}`;
+        localStorage.setItem(CLIENT_ID_KEY, fresh);
+        return fresh;
+      }
+
+      function getRoomIdFromMeetingContext(context) {
+        const meetingUUID =
+          context?.meetingUUID ||
+          context?.meetingUuid ||
+          context?.meetingId ||
+          context?.mid ||
+          context?.sid ||
+          "";
+        if (!meetingUUID) return "local-room";
+        return String(meetingUUID).replace(/[.#$/[\]]/g, "_");
+      }
+
+      function upsertPeer(peerId, payload, source) {
+        if (!peerId || peerId === state.clientId || !payload) return;
+        state.peers[peerId] = {
+          salary: Number(payload.salary) || 0,
+          running: Boolean(payload.running),
+          startedAt: payload.startedAt ? Number(payload.startedAt) : null,
+          elapsedMs: Number(payload.elapsedMs) || 0,
+          source,
+          lastSeen: Date.now(),
+        };
+      }
+
+      function getSelfSnapshot() {
+        return {
+          salary: state.salary,
+          running: state.running,
+          startedAt: state.startedAt,
+          elapsedMs: state.elapsedMs,
+          updatedAt: Date.now(),
+        };
+      }
+
+      function broadcastSnapshot() {
+        if (!bc) return;
+        try {
+          bc.postMessage({
+            type: "state",
+            roomId: state.roomId,
+            userId: state.clientId,
+            payload: getSelfSnapshot(),
+          });
+        } catch {}
+      }
+
+      function publishFirebaseSnapshot() {
+        if (!firebaseSelfRef) return;
+        try {
+          firebaseSelfRef.set(getSelfSnapshot());
+        } catch {}
+      }
+
+      function publishPresence() {
+        broadcastSnapshot();
+        publishFirebaseSnapshot();
+      }
+
+      function setupBroadcastSync() {
+        try {
+          if (bc) bc.close();
+          bc = new BroadcastChannel(`callcost:${state.roomId}`);
+          bc.onmessage = (event) => {
+            const data = event?.data;
+            if (!data || data.type !== "state") return;
+            if (data.roomId !== state.roomId) return;
+            upsertPeer(String(data.userId || ""), data.payload, "bc");
+          };
+          publishPresence();
+        } catch {
+          bc = null;
+        }
+      }
+
+      function setupFirebaseSync() {
+        if (!FIREBASE_CONFIG || !window.firebase) return;
+        try {
+          const app = firebase.apps.length
+            ? firebase.apps[0]
+            : firebase.initializeApp(FIREBASE_CONFIG);
+          firebaseDb = app.database();
+          firebaseParticipantsRef = firebaseDb.ref(`rooms/${state.roomId}/participants`);
+          firebaseSelfRef = firebaseParticipantsRef.child(state.clientId);
+          firebaseSelfRef.onDisconnect().remove();
+          firebaseParticipantsRef.on("value", (snap) => {
+            const participants = snap.val() || {};
+            Object.keys(participants).forEach((id) => {
+              if (id === state.clientId) return;
+              upsertPeer(id, participants[id], "firebase");
+            });
+          });
+          publishFirebaseSnapshot();
+        } catch {}
+      }
+
+      async function initPresenceSync() {
+        state.clientId = getClientId();
+        if (zoomSdkApi?.getMeetingContext) {
+          try {
+            const context = await zoomSdkApi.getMeetingContext();
+            state.roomId = getRoomIdFromMeetingContext(context);
+          } catch {
+            state.roomId = "local-room";
+          }
+        }
+        setupBroadcastSync();
+        setupFirebaseSync();
+      }
+
+      function stopSync() {
+        if (bc) {
+          try {
+            bc.close();
+          } catch {}
+          bc = null;
+        }
+        if (firebaseParticipantsRef) {
+          try {
+            firebaseParticipantsRef.off();
+          } catch {}
+          firebaseParticipantsRef = null;
+        }
+        if (firebaseSelfRef) {
+          try {
+            firebaseSelfRef.remove();
+          } catch {}
+          firebaseSelfRef = null;
+        }
       }
 
       function getHint(amount) {
@@ -827,10 +1011,12 @@
         state.elapsedMs = 0;
         state.hint = DEFAULT_HINT;
         state.forceSalaryScreen = false;
+        state.peers = {};
         refs.salaryInput.value = "";
         refs.amountHint.textContent = DEFAULT_HINT;
         refs.salaryInput.blur();
         closeMenu();
+        publishPresence();
         render();
       }
 
@@ -933,7 +1119,7 @@
         refs.salaryPanel.hidden = true;
         refs.meterPanel.hidden = false;
 
-        const amount = getAmount();
+        const amount = getTotalAmount();
         refs.amountValue.textContent = formatMoney(amount);
         setHint(getHint(amount));
 
@@ -983,6 +1169,7 @@
           state.startedAt = Date.now();
         }
         persist();
+        publishPresence();
         render();
       }
 
@@ -999,6 +1186,7 @@
         }
 
         persist();
+        publishPresence();
         render();
       }
 
@@ -1011,6 +1199,7 @@
         state.editing = true;
         state.forceSalaryScreen = true;
         persist();
+        publishPresence();
         closeMenu();
         focusInput();
       }
@@ -1031,6 +1220,10 @@
           if (!state.running) return;
           renderMeterState();
         }, 100);
+        clearInterval(syncPulseHandle);
+        syncPulseHandle = window.setInterval(() => {
+          publishPresence();
+        }, 1000);
       }
 
       async function initZoom() {
@@ -1039,6 +1232,7 @@
           await zoomSdkApi.config({
             popoutSize: { width: 369, height: 698 },
             size: { width: 369, height: 698 },
+            capabilities: ["getMeetingContext"],
           });
         } catch {}
       }
@@ -1051,6 +1245,7 @@
         state.salary = normalizeSalary(refs.salaryInput.value);
         state.revealUntil = state.salary ? Date.now() + DIGIT_REVEAL_MS : 0;
         persist();
+        publishPresence();
         render();
       });
 
@@ -1066,6 +1261,7 @@
         state.editing = false;
         state.revealUntil = 0;
         clearTimeout(revealMaskHandle);
+        publishPresence();
         render();
       });
 
@@ -1097,10 +1293,13 @@
       document.addEventListener("keydown", (event) => {
         if (event.key === "Escape") closeMenu();
       });
+      window.addEventListener("beforeunload", stopSync);
 
       render();
       startTicker();
-      initZoom();
+      initZoom().finally(() => {
+        initPresenceSync();
+      });
     </script>
   </body>
 </html>
