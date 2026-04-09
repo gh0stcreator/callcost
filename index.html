@@ -528,6 +528,24 @@
         height: 15px;
       }
 
+      .sync-debug {
+        position: absolute;
+        top: 503px;
+        left: 36px;
+        width: 297px;
+        margin: 0;
+        color: #5f636d;
+        text-align: center;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 10px;
+        font-weight: 300;
+        line-height: 16px;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       .footer {
         position: absolute;
         top: 659px;
@@ -690,6 +708,11 @@
             alt=""
           />
         </button>
+
+        <p
+          id="syncDebug"
+          class="sync-debug"
+        ></p>
       </section>
 
       <div class="footer">FCTS®</div>
@@ -740,6 +763,7 @@
         startButton: document.getElementById("startButton"),
         amountValue: document.getElementById("amountValue"),
         amountHint: document.getElementById("amountHint"),
+        syncDebug: document.getElementById("syncDebug"),
         meterButton: document.getElementById("meterButton"),
         meterButtonIcon: document.getElementById("meterButtonIcon"),
       };
@@ -865,6 +889,26 @@
           total += getParticipantAmount(peer.salary, peer.running, peer.startedAt, peer.elapsedMs);
         });
         return total;
+      }
+
+      function getActivePeerCount() {
+        const now = Date.now();
+        Object.keys(state.peers).forEach((peerId) => {
+          const peer = state.peers[peerId];
+          if (!peer || now - (peer.lastSeen || 0) > PRESENCE_TTL_MS) {
+            delete state.peers[peerId];
+          }
+        });
+        return Object.keys(state.peers).length;
+      }
+
+      function getSyncDebugText() {
+        const peers = getActivePeerCount();
+        const room =
+          state.roomId === "local-room"
+            ? "local-room"
+            : `${state.roomId.slice(0, 10)}…`;
+        return `sync: ${peers + 1} чел · fb:${firebaseSelfRef ? "on" : "off"} · room:${room}`;
       }
 
       function getClientId() {
@@ -1183,6 +1227,7 @@
         const amount = getTotalAmount();
         refs.amountValue.textContent = formatMoney(amount);
         setHint(getHint(amount));
+        refs.syncDebug.textContent = getSyncDebugText();
 
         if (state.running) {
           refs.meterButton.ariaLabel = "Пауза";
