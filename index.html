@@ -58,6 +58,9 @@
       body {
         display: flex;
         justify-content: center;
+        align-items: flex-start;
+        min-height: 100dvh;
+        overflow: hidden;
         font-family: "Inter", sans-serif;
       }
 
@@ -75,7 +78,16 @@
         display: block;
       }
 
+      .app-host {
+        position: relative;
+        width: calc(369px * var(--app-scale, 1));
+        height: calc(698px * var(--app-scale, 1));
+      }
+
       .app {
+        position: absolute;
+        top: 0;
+        left: 0;
         position: relative;
         width: 369px;
         height: 698px;
@@ -83,6 +95,8 @@
         border-bottom-left-radius: 8px;
         border-bottom-right-radius: 8px;
         background: var(--bg);
+        transform: scale(var(--app-scale, 1));
+        transform-origin: top left;
       }
 
       .logo {
@@ -527,7 +541,8 @@
     </style>
   </head>
   <body>
-    <main class="app">
+    <div class="app-host">
+      <main class="app">
       <img
         class="logo"
         src="./assets/logo.svg"
@@ -675,12 +690,15 @@
       </section>
 
       <div class="footer">FCTS®</div>
-    </main>
+      </main>
+    </div>
 
     <script>
       const zoomSdkApi = window.zoomSdk;
       const STORAGE_KEY = "callcost:v6";
       const CLIENT_ID_KEY = "callcost:client-id:v1";
+      const BASE_WIDTH = 369;
+      const BASE_HEIGHT = 698;
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 100;
@@ -756,6 +774,13 @@
       let firebaseDb = null;
       let firebaseParticipantsRef = null;
       let firebaseSelfRef = null;
+
+      function updateViewportScale() {
+        const widthScale = window.innerWidth / BASE_WIDTH;
+        const heightScale = window.innerHeight / BASE_HEIGHT;
+        const scale = Math.min(1, widthScale, heightScale);
+        document.documentElement.style.setProperty("--app-scale", String(scale));
+      }
 
       function normalizeSalary(value) {
         const digits = String(value).replace(/\D+/g, "");
@@ -1294,7 +1319,12 @@
         if (event.key === "Escape") closeMenu();
       });
       window.addEventListener("beforeunload", stopSync);
+      window.addEventListener("resize", updateViewportScale);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", updateViewportScale);
+      }
 
+      updateViewportScale();
       render();
       startTicker();
       initZoom().finally(() => {
