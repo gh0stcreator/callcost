@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") !== "0";
-      const BUILD_ID = "2026-04-09-d";
+      const BUILD_ID = "2026-04-09-e";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -1004,6 +1004,66 @@
         return `participants_${ids.join("_").slice(0, 120)}`.replace(/[.#$/[\]]/g, "_");
       }
 
+      function hashString(input) {
+        let hash = 2166136261;
+        for (let i = 0; i < input.length; i += 1) {
+          hash ^= input.charCodeAt(i);
+          hash +=
+            (hash << 1) +
+            (hash << 4) +
+            (hash << 7) +
+            (hash << 8) +
+            (hash << 24);
+        }
+        return (hash >>> 0).toString(36);
+      }
+
+      function getRoomIdFromUrlSignals() {
+        const sources = [];
+        const pushSource = (raw) => {
+          if (!raw) return;
+          try {
+            const parsed = new URL(raw, window.location.origin);
+            sources.push(parsed);
+          } catch {}
+        };
+
+        pushSource(window.location.href);
+        pushSource(document.referrer);
+
+        const meetingKeyHints = [
+          "meetinguuid",
+          "meetingid",
+          "meetingnumber",
+          "mn",
+          "confid",
+          "conferenceid",
+          "sessionid",
+          "sid",
+          "roomid",
+        ];
+
+        for (const url of sources) {
+          for (const [key, value] of url.searchParams.entries()) {
+            if (!value) continue;
+            const normalizedKey = key.toLowerCase();
+            if (meetingKeyHints.some((needle) => normalizedKey.includes(needle))) {
+              return `url_${String(value).replace(/[.#$/[\]]/g, "_").slice(0, 120)}`;
+            }
+          }
+
+          const joined = `${url.pathname} ${url.search} ${url.hash}`;
+          const tokenMatch = joined.match(/[a-z0-9_-]{24,}/gi);
+          if (tokenMatch && tokenMatch[0]) {
+            return `urltok_${hashString(tokenMatch[0])}`;
+          }
+        }
+
+        const joinedSources = sources.map((u) => u.href).join("|");
+        if (!joinedSources) return "";
+        return `urlfp_${hashString(joinedSources.slice(0, 2000))}`;
+      }
+
       function isMeetingRoomResolved(roomId = state.roomId) {
         return Boolean(roomId && roomId !== "local-room");
       }
@@ -1162,8 +1222,8 @@
               ? payload.participants.length
               : 0;
             if (!isMeetingRoomResolved()) {
-              const roomFromParticipants = getRoomIdFromParticipants(payload);
-              if (roomFromParticipants) {
+              const roomFromParticipants = getRoomIdFromParticipants(payload) || getRoomIdFromUrlSignals();
+              if (roomFromParticipants && roomFromParticipants !== state.roomId) {
                 state.roomId = roomFromParticipants;
                 stopSync();
                 setupBroadcastSync();
@@ -1200,6 +1260,9 @@
             const participantsPayload = await zoomSdkApi.getMeetingParticipants();
             roomId = getRoomIdFromParticipants(participantsPayload);
           } catch {}
+        }
+        if (!roomId) {
+          roomId = getRoomIdFromUrlSignals();
         }
         state.roomId = roomId || "local-room";
         resetMeetingRuntimeState();
