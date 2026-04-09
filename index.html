@@ -885,6 +885,9 @@
       }
 
       function getTotalAmount() {
+        if (state.meetingParticipantsCount === 0) {
+          return getLocalAmount();
+        }
         let total = getLocalAmount();
         const now = Date.now();
         Object.keys(state.peers).forEach((peerId) => {
@@ -904,6 +907,9 @@
       }
 
       function getActivePeerCount() {
+        if (state.meetingParticipantsCount === 0) {
+          return 0;
+        }
         const now = Date.now();
         Object.keys(state.peers).forEach((peerId) => {
           const peer = state.peers[peerId];
@@ -937,7 +943,8 @@
           state.roomId === "local-room"
             ? "local-room"
             : `${state.roomId.slice(0, 10)}…`;
-        return `meet:${meeting} · app:${peers + 1} · salaries:${salaryList} · sum:${formatMoney(totalSalary)} · total:${formatMoney(totalAmount)} · fb:${syncBackend === "none" ? "off" : "on"} · room:${room}`;
+        const sharedMode = meeting === 0 ? "off" : "on";
+        return `meet:${meeting} · app:${peers + 1} · shared:${sharedMode} · salaries:${salaryList} · sum:${formatMoney(totalSalary)} · total:${formatMoney(totalAmount)} · fb:${syncBackend === "none" ? "off" : "on"} · room:${room}`;
       }
 
       function getClientId() {
@@ -991,6 +998,7 @@
       function upsertPeer(peerId, payload, source) {
         if (!peerId || peerId === state.clientId || !payload) return;
         const updatedAt = Number(payload.updatedAt) || Date.now();
+        if (updatedAt > Date.now() + 15000) return;
         if (Date.now() - updatedAt > REMOTE_SNAPSHOT_TTL_MS) return;
         state.peers[peerId] = {
           salary: Number(payload.salary) || 0,
