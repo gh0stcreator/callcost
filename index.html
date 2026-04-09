@@ -712,6 +712,7 @@
         <p
           id="syncDebug"
           class="sync-debug"
+          hidden
         ></p>
       </section>
 
@@ -725,6 +726,7 @@
       const CLIENT_ID_KEY = "callcost:client-id:v1";
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
+      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -933,6 +935,20 @@
         return String(meetingUUID).replace(/[.#$/[\]]/g, "_");
       }
 
+      function getRoomIdFromRunningContext(context) {
+        const meetingLike =
+          context?.meetingUUID ||
+          context?.meetingUuid ||
+          context?.meetingId ||
+          context?.mid ||
+          context?.sessionId ||
+          context?.context?.meetingUUID ||
+          context?.context?.meetingId ||
+          "";
+        if (!meetingLike) return "";
+        return String(meetingLike).replace(/[.#$/[\]]/g, "_");
+      }
+
       function getRoomIdFromParticipants(payload) {
         const participants = payload?.participants || [];
         if (!participants.length) return "";
@@ -1068,6 +1084,12 @@
           try {
             const context = await zoomSdkApi.getMeetingContext();
             roomId = getRoomIdFromMeetingContext(context);
+          } catch {}
+        }
+        if (!roomId && zoomSdkApi?.getRunningContext) {
+          try {
+            const runningContext = await zoomSdkApi.getRunningContext();
+            roomId = getRoomIdFromRunningContext(runningContext);
           } catch {}
         }
         if (!roomId && zoomSdkApi?.getMeetingParticipants) {
@@ -1289,7 +1311,10 @@
         const amount = getTotalAmount();
         refs.amountValue.textContent = formatMoney(amount);
         setHint(getHint(amount));
-        refs.syncDebug.textContent = getSyncDebugText();
+        refs.syncDebug.hidden = !DEBUG_MODE;
+        if (DEBUG_MODE) {
+          refs.syncDebug.textContent = getSyncDebugText();
+        }
 
         if (state.running) {
           refs.meterButton.ariaLabel = "Пауза";
