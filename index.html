@@ -1104,6 +1104,22 @@
         publishFirebaseSnapshot();
       }
 
+      function resetMeetingRuntimeState() {
+        state.running = false;
+        state.startedAt = null;
+        state.elapsedMs = 0;
+        state.peers = {};
+      }
+
+      function autoStartForMeetingIfSalaryExists() {
+        if (!state.salary) return;
+        state.editing = false;
+        state.forceSalaryScreen = false;
+        state.running = true;
+        state.startedAt = Date.now();
+        state.elapsedMs = 0;
+      }
+
       function startMeetingParticipantsPoll() {
         clearInterval(meetingParticipantsPollHandle);
         if (!zoomSdkApi?.getMeetingParticipants) {
@@ -1148,9 +1164,13 @@
           } catch {}
         }
         state.roomId = roomId || "local-room";
+        resetMeetingRuntimeState();
         setupBroadcastSync();
         setupFirebaseSync();
         startMeetingParticipantsPoll();
+        autoStartForMeetingIfSalaryExists();
+        publishPresence();
+        render();
       }
 
       function stopSync() {
@@ -1213,9 +1233,6 @@
           JSON.stringify({
             salary: state.salary,
             editing: false,
-            running: state.running,
-            startedAt: state.startedAt,
-            elapsedMs: state.elapsedMs,
             hint: state.hint,
             forceSalaryScreen: false,
           })
@@ -1248,9 +1265,6 @@
           if (!raw) return;
           const parsed = JSON.parse(raw);
           if (typeof parsed.salary === "number") state.salary = parsed.salary;
-          if (typeof parsed.running === "boolean") state.running = parsed.running;
-          if (typeof parsed.startedAt === "number") state.startedAt = parsed.startedAt;
-          if (typeof parsed.elapsedMs === "number") state.elapsedMs = parsed.elapsedMs;
           if (typeof parsed.hint === "string") state.hint = parsed.hint;
         } catch {}
       }
