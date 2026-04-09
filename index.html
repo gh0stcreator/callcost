@@ -808,6 +808,9 @@
       let firebaseDb = null;
       let firebaseParticipantsRef = null;
       let firebaseSelfRef = null;
+      let firebaseRestBaseUrl = null;
+      let firebaseRestPollHandle = null;
+      let syncBackend = "none";
 
       function updateViewportScale() {
         const widthScale = window.innerWidth / BASE_WIDTH;
@@ -908,7 +911,7 @@
           state.roomId === "local-room"
             ? "local-room"
             : `${state.roomId.slice(0, 10)}…`;
-        return `sync: ${peers + 1} чел · fb:${firebaseSelfRef ? "on" : "off"} · room:${room}`;
+        return `sync: ${peers + 1} чел · fb:${syncBackend === "none" ? "off" : "on"} · room:${room}`;
       }
 
       function getClientId() {
@@ -928,6 +931,17 @@
           "";
         if (!meetingUUID) return "local-room";
         return String(meetingUUID).replace(/[.#$/[\]]/g, "_");
+      }
+
+      function getRoomIdFromParticipants(payload) {
+        const participants = payload?.participants || [];
+        if (!participants.length) return "";
+        const ids = participants
+          .map((p) => String(p?.participantUUID || p?.userId || p?.id || ""))
+          .filter(Boolean)
+          .sort();
+        if (!ids.length) return "";
+        return `participants_${ids.join("_").slice(0, 120)}`.replace(/[.#$/[\]]/g, "_");
       }
 
       function upsertPeer(peerId, payload, source) {
@@ -965,10 +979,21 @@
       }
 
       function publishFirebaseSnapshot() {
-        if (!firebaseSelfRef) return;
-        try {
-          firebaseSelfRef.set(getSelfSnapshot());
-        } catch {}
+        if (firebaseSelfRef) {
+          try {
+            firebaseSelfRef.set(getSelfSnapshot());
+            return;
+          } catch {}
+        }
+        if (firebaseRestBaseUrl) {
+          const url = `${firebaseRestBaseUrl}/rooms/${state.roomId}/participants/${state.clientId}.json`;
+          fetch(url, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(getSelfSnapshot()),
+            keepalive: true,
+          }).catch(() => {});
+        }
       }
 
       function publishPresence() {
@@ -993,36 +1018,65 @@
       }
 
       function setupFirebaseSync() {
-        if (!FIREBASE_CONFIG || !window.firebase) return;
-        try {
-          const app = firebase.apps.length
-            ? firebase.apps[0]
-            : firebase.initializeApp(FIREBASE_CONFIG);
-          firebaseDb = app.database();
-          firebaseParticipantsRef = firebaseDb.ref(`rooms/${state.roomId}/participants`);
-          firebaseSelfRef = firebaseParticipantsRef.child(state.clientId);
-          firebaseSelfRef.onDisconnect().remove();
-          firebaseParticipantsRef.on("value", (snap) => {
-            const participants = snap.val() || {};
-            Object.keys(participants).forEach((id) => {
-              if (id === state.clientId) return;
-              upsertPeer(id, participants[id], "firebase");
+        if (!FIREBASE_CONFIG) return;
+        if (window.firebase) {
+          try {
+            const app = firebase.apps.length
+              ? firebase.apps[0]
+              : firebase.initializeApp(FIREBASE_CONFIG);
+            firebaseDb = app.database();
+            firebaseParticipantsRef = firebaseDb.ref(`rooms/${state.roomId}/participants`);
+            firebaseSelfRef = firebaseParticipantsRef.child(state.clientId);
+            firebaseSelfRef.onDisconnect().remove();
+            firebaseParticipantsRef.on("value", (snap) => {
+              const participants = snap.val() || {};
+              Object.keys(participants).forEach((id) => {
+                if (id === state.clientId) return;
+                upsertPeer(id, participants[id], "firebase-sdk");
+              });
             });
-          });
-          publishFirebaseSnapshot();
-        } catch {}
+            syncBackend = "firebase-sdk";
+            publishFirebaseSnapshot();
+            return;
+          } catch {}
+        }
+
+        if (!FIREBASE_CONFIG.databaseURL) return;
+        firebaseRestBaseUrl = FIREBASE_CONFIG.databaseURL.replace(/\/+$/, "");
+        syncBackend = "firebase-rest";
+        clearInterval(firebaseRestPollHandle);
+        firebaseRestPollHandle = window.setInterval(() => {
+          const url = `${firebaseRestBaseUrl}/rooms/${state.roomId}/participants.json`;
+          fetch(url, { method: "GET", cache: "no-store" })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((participants) => {
+              if (!participants || typeof participants !== "object") return;
+              Object.keys(participants).forEach((id) => {
+                if (id === state.clientId) return;
+                upsertPeer(id, participants[id], "firebase-rest");
+              });
+            })
+            .catch(() => {});
+        }, 1000);
+        publishFirebaseSnapshot();
       }
 
       async function initPresenceSync() {
         state.clientId = getClientId();
+        let roomId = "";
         if (zoomSdkApi?.getMeetingContext) {
           try {
             const context = await zoomSdkApi.getMeetingContext();
-            state.roomId = getRoomIdFromMeetingContext(context);
-          } catch {
-            state.roomId = "local-room";
-          }
+            roomId = getRoomIdFromMeetingContext(context);
+          } catch {}
         }
+        if (!roomId && zoomSdkApi?.getMeetingParticipants) {
+          try {
+            const participantsPayload = await zoomSdkApi.getMeetingParticipants();
+            roomId = getRoomIdFromParticipants(participantsPayload);
+          } catch {}
+        }
+        state.roomId = roomId || "local-room";
         setupBroadcastSync();
         setupFirebaseSync();
       }
@@ -1046,6 +1100,14 @@
           } catch {}
           firebaseSelfRef = null;
         }
+        if (firebaseRestBaseUrl) {
+          const url = `${firebaseRestBaseUrl}/rooms/${state.roomId}/participants/${state.clientId}.json`;
+          fetch(url, { method: "DELETE", keepalive: true }).catch(() => {});
+          firebaseRestBaseUrl = null;
+        }
+        clearInterval(firebaseRestPollHandle);
+        firebaseRestPollHandle = null;
+        syncBackend = "none";
       }
 
       function getHint(amount) {
@@ -1338,7 +1400,7 @@
           await zoomSdkApi.config({
             popoutSize: { width: 369, height: 698 },
             size: { width: 369, height: 698 },
-            capabilities: ["getMeetingContext"],
+            capabilities: ["getMeetingContext", "getMeetingParticipants", "getRunningContext"],
           });
         } catch {}
       }
