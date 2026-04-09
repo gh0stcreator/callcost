@@ -726,7 +726,7 @@
       const CLIENT_ID_KEY = "callcost:client-id:v1";
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
-      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") !== "0";
+      const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
       const BUILD_ID = "2026-04-09-e";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
