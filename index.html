@@ -765,6 +765,11 @@
         { price: 9800, forms: ["отпускной чемодан", "отпускных чемодана", "отпускных чемоданов"] },
         { price: 101064, forms: ["дойная корова", "дойные коровы", "дойных коров"] },
       ];
+      const lowAmountHints = [
+        "или 1 сигарета поштучно…",
+        "или 1 спичечный коробок…",
+        "или 1 пакетик сахара…",
+      ];
 
       let tickHandle = null;
       let hintFadeHandle = null;
@@ -998,6 +1003,14 @@
       }
 
       function getHint(amount) {
+        if (amount >= 1 && amount <= 15) {
+          const idx = Math.min(
+            lowAmountHints.length - 1,
+            Math.floor((Math.max(1, amount) - 1) / 5)
+          );
+          return lowAmountHints[idx];
+        }
+
         const bucket = Math.max(0, Math.floor(amount / HINT_BUCKET_RUBLES));
         const item = hintItems[bucket % hintItems.length];
         const quantity = Math.max(1, Math.round(Math.max(amount, item.price) / item.price));
