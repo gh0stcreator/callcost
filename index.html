@@ -530,7 +530,7 @@
 
       .sync-debug {
         position: absolute;
-        top: 503px;
+        top: 521px;
         left: 36px;
         width: 297px;
         margin: 0;
@@ -538,6 +538,24 @@
         text-align: center;
         font-family: "JetBrains Mono", monospace;
         font-size: 10px;
+        font-weight: 300;
+        line-height: 16px;
+        letter-spacing: 0.2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .sync-meta {
+        position: absolute;
+        top: 503px;
+        left: 36px;
+        width: 297px;
+        margin: 0;
+        color: #7a7f8b;
+        text-align: center;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 11px;
         font-weight: 300;
         line-height: 16px;
         letter-spacing: 0.2px;
@@ -710,6 +728,11 @@
         </button>
 
         <p
+          id="syncMeta"
+          class="sync-meta"
+        ></p>
+
+        <p
           id="syncDebug"
           class="sync-debug"
           hidden
@@ -727,7 +750,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-10-h";
+      const BUILD_ID = "2026-04-10-i";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -771,6 +794,7 @@
         startButton: document.getElementById("startButton"),
         amountValue: document.getElementById("amountValue"),
         amountHint: document.getElementById("amountHint"),
+        syncMeta: document.getElementById("syncMeta"),
         syncDebug: document.getElementById("syncDebug"),
         meterButton: document.getElementById("meterButton"),
         meterButtonIcon: document.getElementById("meterButtonIcon"),
@@ -962,6 +986,24 @@
             : `${state.roomId.slice(0, 10)}…`;
         const appCount = sharedMode ? peers + 1 : 1;
         return `v:${BUILD_ID} · meet:${meeting} · app:${appCount} · shared:${sharedMode ? "on" : "off"} · salaries:${salaryList} · sum:${formatMoney(totalSalary)} · total:${formatMoney(totalAmount)} · fb:${syncBackend === "none" ? "off" : "on"} · room:${room}`;
+      }
+
+      function getCountedSalaryCount() {
+        const sharedMode = shouldUseSharedTotals();
+        const localCount = state.salary > 0 ? 1 : 0;
+        if (!sharedMode) return localCount;
+        const peerCount = Object.values(state.peers)
+          .map((peer) => Number(peer.salary) || 0)
+          .filter((salary) => salary > 0).length;
+        return localCount + peerCount;
+      }
+
+      function formatSalaryWord(count) {
+        const mod10 = count % 10;
+        const mod100 = count % 100;
+        if (mod10 === 1 && mod100 !== 11) return "зарплата";
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "зарплаты";
+        return "зарплат";
       }
 
       function getClientId() {
@@ -1678,8 +1720,10 @@
         refs.meterPanel.hidden = false;
 
         const amount = getTotalAmount();
+        const countedSalaryCount = getCountedSalaryCount();
         refs.amountValue.textContent = formatMoney(amount);
         setHint(getHint(amount));
+        refs.syncMeta.textContent = `Учитывается ${countedSalaryCount} ${formatSalaryWord(countedSalaryCount)}`;
         refs.syncDebug.hidden = !DEBUG_MODE;
         if (DEBUG_MODE) {
           refs.syncDebug.textContent = getSyncDebugText(amount);
