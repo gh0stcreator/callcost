@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-10-g";
+      const BUILD_ID = "2026-04-10-h";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -736,7 +736,7 @@
       const PRESENCE_TTL_MS = 8000;
       const REMOTE_SNAPSHOT_TTL_MS = 12000;
       const ROOM_DISCOVERY_MAX_ROOMS = 30;
-      const ROOM_DISCOVERY_INTERVAL_MS = 12000;
+      const ROOM_DISCOVERY_INTERVAL_MS = 3000;
       const DEFAULT_HINT = "или 1 кофе 3 в 1…";
       const FIREBASE_CONFIG = window.CALLCOST_FIREBASE_CONFIG || null;
       const state = {
@@ -1159,7 +1159,6 @@
 
       async function discoverActiveRoomAliases() {
         if (!FIREBASE_CONFIG?.databaseURL) return;
-        if (state.meetingParticipantsCount < 2) return;
         if (getActivePeerCount() > 0) return;
 
         const baseUrl = FIREBASE_CONFIG.databaseURL.replace(/\/+$/, "");
