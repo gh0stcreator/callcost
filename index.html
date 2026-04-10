@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-10-a";
+      const BUILD_ID = "2026-04-10-b";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -1035,7 +1035,10 @@
           "meetinguuid",
           "meetingid",
           "meetingnumber",
+          "meeting_no",
+          "meetingno",
           "mn",
+          "confno",
           "confid",
           "conferenceid",
           "sessionid",
@@ -1053,6 +1056,16 @@
           }
 
           const joined = `${url.pathname} ${url.search} ${url.hash}`;
+          const meetingNoMatch = joined.match(/\b\d{9,12}\b/);
+          if (meetingNoMatch && meetingNoMatch[0]) {
+            return `mn_${meetingNoMatch[0]}`;
+          }
+
+          const uuidLikeMatch = joined.match(/\b[a-f0-9]{32,64}\b/i);
+          if (uuidLikeMatch && uuidLikeMatch[0]) {
+            return `uuid_${uuidLikeMatch[0].toLowerCase().slice(0, 64)}`;
+          }
+
           const tokenMatch = joined.match(/[a-z0-9_-]{24,}/gi);
           if (tokenMatch && tokenMatch[0]) {
             return `urltok_${hashString(tokenMatch[0])}`;
