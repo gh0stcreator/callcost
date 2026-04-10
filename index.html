@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-10-c";
+      const BUILD_ID = "2026-04-10-d";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -748,6 +748,7 @@
         revealUntil: 0,
         clientId: "",
         roomId: "local-room",
+        roomIds: [],
         meetingParticipantsCount: 0,
         peers: {},
       };
@@ -809,10 +810,10 @@
       let syncPulseHandle = null;
       let resetConfirmArmed = false;
       let lastHintSwapAt = 0;
-      let bc = null;
+      let bcChannels = [];
       let firebaseDb = null;
-      let firebaseParticipantsRef = null;
-      let firebaseSelfRef = null;
+      let firebaseParticipantsRefs = [];
+      let firebaseSelfRefs = [];
       let firebaseRestBaseUrl = null;
       let firebaseRestPollHandle = null;
       let meetingParticipantsPollHandle = null;
@@ -901,11 +902,11 @@
       }
 
       function shouldSyncPresence() {
-        return isMeetingRoomResolved();
+        return state.roomIds.length > 0 || isMeetingRoomResolved();
       }
 
       function shouldUseSharedTotals() {
-        if (!isMeetingRoomResolved()) return false;
+        if (!shouldSyncPresence()) return false;
         const activePeers = pruneStalePeers();
         if (state.meetingParticipantsCount >= 2) return true;
         if (state.meetingParticipantsCount === 0 && activePeers > 0) return true;
@@ -927,7 +928,7 @@
       }
 
       function getActivePeerCount() {
-        if (!isMeetingRoomResolved()) {
+        if (!shouldSyncPresence()) {
           state.peers = {};
           return 0;
         }
@@ -990,6 +991,12 @@
           "";
         if (!meetingLike) return "";
         return String(meetingLike).replace(/[.#$/[\]]/g, "_");
+      }
+
+      function getRoomIdFromRunningSession(context) {
+        const sessionLike = context?.sessionId || context?.context?.sessionId || "";
+        if (!sessionLike) return "";
+        return `sess_${String(sessionLike).replace(/[.#$/[\]]/g, "_").slice(0, 120)}`;
       }
 
       function getRoomIdFromParticipants(payload) {
@@ -1078,18 +1085,38 @@
         return Boolean(roomId && roomId !== "local-room");
       }
 
-      function applyRoomId(nextRoomId) {
-        const targetRoomId = nextRoomId || "local-room";
-        if (targetRoomId === state.roomId) return;
+      function normalizeRoomIds(roomIds) {
+        const seen = new Set();
+        const normalized = [];
+        roomIds.forEach((id) => {
+          const value = String(id || "").trim();
+          if (!value || value === "local-room") return;
+          if (seen.has(value)) return;
+          seen.add(value);
+          normalized.push(value);
+        });
+        return normalized;
+      }
 
-        const previousRoomId = state.roomId;
+      function applyRoomIds(nextRoomIds) {
+        const normalized = normalizeRoomIds(nextRoomIds);
+        const nextPrimaryRoomId = normalized[0] || "local-room";
+        const previousPrimaryRoomId = state.roomId;
+        const previousSignature = state.roomIds.join("|");
+        const nextSignature = normalized.join("|");
+
+        if (previousPrimaryRoomId === nextPrimaryRoomId && previousSignature === nextSignature) {
+          return;
+        }
+
         const shouldResetRuntime =
-          isMeetingRoomResolved(previousRoomId) &&
-          isMeetingRoomResolved(targetRoomId) &&
-          previousRoomId !== targetRoomId;
+          isMeetingRoomResolved(previousPrimaryRoomId) &&
+          isMeetingRoomResolved(nextPrimaryRoomId) &&
+          previousPrimaryRoomId !== nextPrimaryRoomId;
 
         stopSync();
-        state.roomId = targetRoomId;
+        state.roomId = nextPrimaryRoomId;
+        state.roomIds = normalized;
         state.peers = {};
 
         if (shouldResetRuntime) {
@@ -1103,32 +1130,32 @@
         render();
       }
 
-      async function resolveRoomId() {
-        let roomId = "";
+      async function resolveRoomIds() {
+        const candidates = [];
+        let runningContext = null;
 
         if (zoomSdkApi?.getMeetingContext) {
           try {
             const context = await zoomSdkApi.getMeetingContext();
-            roomId = getRoomIdFromMeetingContext(context);
+            candidates.push(getRoomIdFromMeetingContext(context));
           } catch {}
         }
-        if (!roomId && zoomSdkApi?.getRunningContext) {
+        if (zoomSdkApi?.getRunningContext) {
           try {
-            const runningContext = await zoomSdkApi.getRunningContext();
-            roomId = getRoomIdFromRunningContext(runningContext);
+            runningContext = await zoomSdkApi.getRunningContext();
+            candidates.push(getRoomIdFromRunningContext(runningContext));
+            candidates.push(getRoomIdFromRunningSession(runningContext));
           } catch {}
         }
-        if (!roomId && zoomSdkApi?.getMeetingParticipants) {
+        if (zoomSdkApi?.getMeetingParticipants) {
           try {
             const participantsPayload = await zoomSdkApi.getMeetingParticipants();
-            roomId = getRoomIdFromParticipants(participantsPayload);
+            candidates.push(getRoomIdFromParticipants(participantsPayload));
           } catch {}
         }
-        if (!roomId) {
-          roomId = getRoomIdFromUrlSignals();
-        }
 
-        return roomId || "local-room";
+        candidates.push(getRoomIdFromUrlSignals());
+        return normalizeRoomIds(candidates);
       }
 
       function upsertPeer(peerId, payload, source) {
@@ -1158,33 +1185,40 @@
       }
 
       function broadcastSnapshot() {
-        if (!bc) return;
-        try {
-          bc.postMessage({
-            type: "state",
-            roomId: state.roomId,
-            userId: state.clientId,
-            payload: getSelfSnapshot(),
-          });
-        } catch {}
+        if (!bcChannels.length) return;
+        const snapshot = getSelfSnapshot();
+        bcChannels.forEach(({ roomId, channel }) => {
+          try {
+            channel.postMessage({
+              type: "state",
+              roomId,
+              userId: state.clientId,
+              payload: snapshot,
+            });
+          } catch {}
+        });
       }
 
       function publishFirebaseSnapshot() {
-        if (firebaseSelfRef) {
-          try {
-            firebaseSelfRef.set(getSelfSnapshot());
-            return;
-          } catch {}
+        const snapshot = getSelfSnapshot();
+        if (firebaseSelfRefs.length) {
+          firebaseSelfRefs.forEach((ref) => {
+            try {
+              ref.set(snapshot);
+            } catch {}
+          });
+          return;
         }
-        if (firebaseRestBaseUrl) {
-          const url = `${firebaseRestBaseUrl}/rooms/${state.roomId}/participants/${state.clientId}.json`;
+        if (!firebaseRestBaseUrl || !state.roomIds.length) return;
+        state.roomIds.forEach((roomId) => {
+          const url = `${firebaseRestBaseUrl}/rooms/${roomId}/participants/${state.clientId}.json`;
           fetch(url, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(getSelfSnapshot()),
+            body: JSON.stringify(snapshot),
             keepalive: true,
           }).catch(() => {});
-        }
+        });
       }
 
       function publishPresence() {
@@ -1195,18 +1229,26 @@
 
       function setupBroadcastSync() {
         if (!shouldSyncPresence()) return;
+        bcChannels.forEach(({ channel }) => {
+          try {
+            channel.close();
+          } catch {}
+        });
+        bcChannels = [];
         try {
-          if (bc) bc.close();
-          bc = new BroadcastChannel(`callcost:${state.roomId}`);
-          bc.onmessage = (event) => {
-            const data = event?.data;
-            if (!data || data.type !== "state") return;
-            if (data.roomId !== state.roomId) return;
-            upsertPeer(String(data.userId || ""), data.payload, "bc");
-          };
+          state.roomIds.forEach((roomId) => {
+            const channel = new BroadcastChannel(`callcost:${roomId}`);
+            channel.onmessage = (event) => {
+              const data = event?.data;
+              if (!data || data.type !== "state") return;
+              if (!state.roomIds.includes(String(data.roomId || ""))) return;
+              upsertPeer(String(data.userId || ""), data.payload, `bc:${roomId}`);
+            };
+            bcChannels.push({ roomId, channel });
+          });
           publishPresence();
         } catch {
-          bc = null;
+          bcChannels = [];
         }
       }
 
@@ -1219,15 +1261,21 @@
               ? firebase.apps[0]
               : firebase.initializeApp(FIREBASE_CONFIG);
             firebaseDb = app.database();
-            firebaseParticipantsRef = firebaseDb.ref(`rooms/${state.roomId}/participants`);
-            firebaseSelfRef = firebaseParticipantsRef.child(state.clientId);
-            firebaseSelfRef.onDisconnect().remove();
-            firebaseParticipantsRef.on("value", (snap) => {
-              const participants = snap.val() || {};
-              Object.keys(participants).forEach((id) => {
-                if (id === state.clientId) return;
-                upsertPeer(id, participants[id], "firebase-sdk");
+            firebaseParticipantsRefs = [];
+            firebaseSelfRefs = [];
+            state.roomIds.forEach((roomId) => {
+              const participantsRef = firebaseDb.ref(`rooms/${roomId}/participants`);
+              const selfRef = participantsRef.child(state.clientId);
+              selfRef.onDisconnect().remove();
+              participantsRef.on("value", (snap) => {
+                const participants = snap.val() || {};
+                Object.keys(participants).forEach((id) => {
+                  if (id === state.clientId) return;
+                  upsertPeer(id, participants[id], `firebase-sdk:${roomId}`);
+                });
               });
+              firebaseParticipantsRefs.push(participantsRef);
+              firebaseSelfRefs.push(selfRef);
             });
             syncBackend = "firebase-sdk";
             publishFirebaseSnapshot();
@@ -1240,17 +1288,19 @@
         syncBackend = "firebase-rest";
         clearInterval(firebaseRestPollHandle);
         firebaseRestPollHandle = window.setInterval(() => {
-          const url = `${firebaseRestBaseUrl}/rooms/${state.roomId}/participants.json`;
-          fetch(url, { method: "GET", cache: "no-store" })
-            .then((res) => (res.ok ? res.json() : null))
-            .then((participants) => {
-              if (!participants || typeof participants !== "object") return;
-              Object.keys(participants).forEach((id) => {
-                if (id === state.clientId) return;
-                upsertPeer(id, participants[id], "firebase-rest");
-              });
-            })
-            .catch(() => {});
+          state.roomIds.forEach((roomId) => {
+            const url = `${firebaseRestBaseUrl}/rooms/${roomId}/participants.json`;
+            fetch(url, { method: "GET", cache: "no-store" })
+              .then((res) => (res.ok ? res.json() : null))
+              .then((participants) => {
+                if (!participants || typeof participants !== "object") return;
+                Object.keys(participants).forEach((id) => {
+                  if (id === state.clientId) return;
+                  upsertPeer(id, participants[id], `firebase-rest:${roomId}`);
+                });
+              })
+              .catch(() => {});
+          });
         }, 1000);
         publishFirebaseSnapshot();
       }
@@ -1293,8 +1343,8 @@
             state.meetingParticipantsCount = previousCount;
           }
 
-          const detectedRoomId = await resolveRoomId();
-          applyRoomId(detectedRoomId);
+          const detectedRoomIds = await resolveRoomIds();
+          applyRoomIds(detectedRoomIds);
 
           if (
             participantsCountResolved &&
@@ -1316,8 +1366,9 @@
 
       async function initPresenceSync() {
         state.clientId = getClientId();
-        const roomId = await resolveRoomId();
-        state.roomId = roomId;
+        const roomIds = await resolveRoomIds();
+        state.roomIds = roomIds;
+        state.roomId = roomIds[0] || "local-room";
         resetMeetingRuntimeState();
         setupBroadcastSync();
         setupFirebaseSync();
@@ -1328,27 +1379,32 @@
       }
 
       function stopSync() {
-        if (bc) {
+        bcChannels.forEach(({ channel }) => {
           try {
-            bc.close();
+            channel.close();
           } catch {}
-          bc = null;
-        }
-        if (firebaseParticipantsRef) {
+        });
+        bcChannels = [];
+
+        firebaseParticipantsRefs.forEach((ref) => {
           try {
-            firebaseParticipantsRef.off();
+            ref.off();
           } catch {}
-          firebaseParticipantsRef = null;
-        }
-        if (firebaseSelfRef) {
+        });
+        firebaseParticipantsRefs = [];
+
+        firebaseSelfRefs.forEach((ref) => {
           try {
-            firebaseSelfRef.remove();
+            ref.remove();
           } catch {}
-          firebaseSelfRef = null;
-        }
+        });
+        firebaseSelfRefs = [];
+
         if (firebaseRestBaseUrl) {
-          const url = `${firebaseRestBaseUrl}/rooms/${state.roomId}/participants/${state.clientId}.json`;
-          fetch(url, { method: "DELETE", keepalive: true }).catch(() => {});
+          state.roomIds.forEach((roomId) => {
+            const url = `${firebaseRestBaseUrl}/rooms/${roomId}/participants/${state.clientId}.json`;
+            fetch(url, { method: "DELETE", keepalive: true }).catch(() => {});
+          });
           firebaseRestBaseUrl = null;
         }
         clearInterval(firebaseRestPollHandle);
