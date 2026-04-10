@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-10-f";
+      const BUILD_ID = "2026-04-10-g";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -735,6 +735,8 @@
       const DIGIT_REVEAL_MS = 700;
       const PRESENCE_TTL_MS = 8000;
       const REMOTE_SNAPSHOT_TTL_MS = 12000;
+      const ROOM_DISCOVERY_MAX_ROOMS = 30;
+      const ROOM_DISCOVERY_INTERVAL_MS = 12000;
       const DEFAULT_HINT = "или 1 кофе 3 в 1…";
       const FIREBASE_CONFIG = window.CALLCOST_FIREBASE_CONFIG || null;
       const state = {
@@ -817,6 +819,7 @@
       let firebaseRestBaseUrl = null;
       let firebaseRestPollHandle = null;
       let meetingParticipantsPollHandle = null;
+      let roomDiscoveryHandle = null;
       let syncBackend = "none";
 
       function updateViewportScale() {
@@ -1154,6 +1157,72 @@
         render();
       }
 
+      async function discoverActiveRoomAliases() {
+        if (!FIREBASE_CONFIG?.databaseURL) return;
+        if (state.meetingParticipantsCount < 2) return;
+        if (getActivePeerCount() > 0) return;
+
+        const baseUrl = FIREBASE_CONFIG.databaseURL.replace(/\/+$/, "");
+        try {
+          const roomsResponse = await fetch(`${baseUrl}/rooms.json`, {
+            method: "GET",
+            cache: "no-store",
+          });
+          if (!roomsResponse.ok) return;
+          const rooms = await roomsResponse.json();
+          if (!rooms || typeof rooms !== "object") return;
+
+          const candidates = Object.keys(rooms)
+            .filter((roomId) => roomId && !state.roomIds.includes(roomId))
+            .slice(0, ROOM_DISCOVERY_MAX_ROOMS);
+          if (!candidates.length) return;
+
+          const scores = await Promise.all(
+            candidates.map(async (roomId) => {
+              try {
+                const participantsResponse = await fetch(
+                  `${baseUrl}/rooms/${roomId}/participants.json`,
+                  { method: "GET", cache: "no-store" }
+                );
+                if (!participantsResponse.ok) return { roomId, score: 0 };
+                const participants = await participantsResponse.json();
+                if (!participants || typeof participants !== "object") {
+                  return { roomId, score: 0 };
+                }
+                const now = Date.now();
+                let active = 0;
+                Object.entries(participants).forEach(([id, payload]) => {
+                  if (id === state.clientId || !payload || typeof payload !== "object") return;
+                  const updatedAt = Number(payload.updatedAt) || 0;
+                  if (!updatedAt) return;
+                  if (now - updatedAt <= REMOTE_SNAPSHOT_TTL_MS) active += 1;
+                });
+                return { roomId, score: active };
+              } catch {
+                return { roomId, score: 0 };
+              }
+            })
+          );
+
+          const best = scores
+            .filter((entry) => entry.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3)
+            .map((entry) => entry.roomId);
+
+          if (!best.length) return;
+          applyRoomIds([...state.roomIds, ...best]);
+        } catch {}
+      }
+
+      function startRoomDiscoveryLoop() {
+        clearInterval(roomDiscoveryHandle);
+        roomDiscoveryHandle = window.setInterval(() => {
+          discoverActiveRoomAliases();
+        }, ROOM_DISCOVERY_INTERVAL_MS);
+        discoverActiveRoomAliases();
+      }
+
       async function resolveRoomIds() {
         const candidates = [];
         let runningContext = null;
@@ -1397,6 +1466,7 @@
         setupBroadcastSync();
         setupFirebaseSync();
         startMeetingParticipantsPoll();
+        startRoomDiscoveryLoop();
         autoStartForMeetingIfSalaryExists();
         publishPresence();
         render();
@@ -1433,6 +1503,8 @@
         }
         clearInterval(firebaseRestPollHandle);
         firebaseRestPollHandle = null;
+        clearInterval(roomDiscoveryHandle);
+        roomDiscoveryHandle = null;
         syncBackend = "none";
       }
 
