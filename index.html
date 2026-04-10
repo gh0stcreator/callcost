@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-10-d";
+      const BUILD_ID = "2026-04-10-e";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -1001,12 +1001,12 @@
 
       function getRoomIdFromParticipants(payload) {
         const participants = payload?.participants || [];
-        if (!participants.length) return "";
+        if (participants.length < 2) return "";
         const ids = participants
           .map((p) => String(p?.participantUUID || p?.userId || p?.id || ""))
           .filter(Boolean)
           .sort();
-        if (!ids.length) return "";
+        if (ids.length < 2) return "";
         return `participants_${ids.join("_").slice(0, 120)}`.replace(/[.#$/[\]]/g, "_");
       }
 
@@ -1072,10 +1072,8 @@
             return `uuid_${uuidLikeMatch[0].toLowerCase().slice(0, 64)}`;
           }
 
-          const tokenMatch = joined.match(/[a-z0-9_-]{24,}/gi);
-          if (tokenMatch && tokenMatch[0]) {
-            return `urltok_${hashString(tokenMatch[0])}`;
-          }
+          // Intentionally skip generic long-token fallback:
+          // Zoom can expose client-specific tokens that split users into different rooms.
         }
 
         return "";
