@@ -727,7 +727,7 @@
       const BASE_WIDTH = 369;
       const BASE_HEIGHT = 698;
       const DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "1";
-      const BUILD_ID = "2026-04-09-e";
+      const BUILD_ID = "2026-04-10-a";
       const WORK_SECONDS_IN_MONTH = 21 * 8 * 3600;
       const HINT_FADE_MS = 180;
       const HINT_BUCKET_RUBLES = 50;
@@ -975,7 +975,7 @@
           context?.meetingId ||
           context?.mid ||
           "";
-        if (!meetingUUID) return "local-room";
+        if (!meetingUUID) return "";
         return String(meetingUUID).replace(/[.#$/[\]]/g, "_");
       }
 
@@ -1059,13 +1059,64 @@
           }
         }
 
-        const joinedSources = sources.map((u) => u.href).join("|");
-        if (!joinedSources) return "";
-        return `urlfp_${hashString(joinedSources.slice(0, 2000))}`;
+        return "";
       }
 
       function isMeetingRoomResolved(roomId = state.roomId) {
         return Boolean(roomId && roomId !== "local-room");
+      }
+
+      function applyRoomId(nextRoomId) {
+        const targetRoomId = nextRoomId || "local-room";
+        if (targetRoomId === state.roomId) return;
+
+        const previousRoomId = state.roomId;
+        const shouldResetRuntime =
+          isMeetingRoomResolved(previousRoomId) &&
+          isMeetingRoomResolved(targetRoomId) &&
+          previousRoomId !== targetRoomId;
+
+        stopSync();
+        state.roomId = targetRoomId;
+        state.peers = {};
+
+        if (shouldResetRuntime) {
+          resetMeetingRuntimeState();
+          autoStartForMeetingIfSalaryExists();
+        }
+
+        setupBroadcastSync();
+        setupFirebaseSync();
+        publishPresence();
+        render();
+      }
+
+      async function resolveRoomId() {
+        let roomId = "";
+
+        if (zoomSdkApi?.getMeetingContext) {
+          try {
+            const context = await zoomSdkApi.getMeetingContext();
+            roomId = getRoomIdFromMeetingContext(context);
+          } catch {}
+        }
+        if (!roomId && zoomSdkApi?.getRunningContext) {
+          try {
+            const runningContext = await zoomSdkApi.getRunningContext();
+            roomId = getRoomIdFromRunningContext(runningContext);
+          } catch {}
+        }
+        if (!roomId && zoomSdkApi?.getMeetingParticipants) {
+          try {
+            const participantsPayload = await zoomSdkApi.getMeetingParticipants();
+            roomId = getRoomIdFromParticipants(participantsPayload);
+          } catch {}
+        }
+        if (!roomId) {
+          roomId = getRoomIdFromUrlSignals();
+        }
+
+        return roomId || "local-room";
       }
 
       function upsertPeer(peerId, payload, source) {
@@ -1210,29 +1261,40 @@
 
       function startMeetingParticipantsPoll() {
         clearInterval(meetingParticipantsPollHandle);
-        if (!zoomSdkApi?.getMeetingParticipants) {
-          state.meetingParticipantsCount = 0;
-          return;
-        }
 
         const updateCount = async () => {
+          const previousCount = state.meetingParticipantsCount;
+          let participantsCountResolved = false;
           try {
-            const payload = await zoomSdkApi.getMeetingParticipants();
-            state.meetingParticipantsCount = Array.isArray(payload?.participants)
-              ? payload.participants.length
-              : 0;
-            if (!isMeetingRoomResolved()) {
-              const roomFromParticipants = getRoomIdFromParticipants(payload) || getRoomIdFromUrlSignals();
-              if (roomFromParticipants && roomFromParticipants !== state.roomId) {
-                state.roomId = roomFromParticipants;
-                stopSync();
-                setupBroadcastSync();
-                setupFirebaseSync();
-                publishPresence();
-              }
+            if (zoomSdkApi?.getMeetingParticipants) {
+              const payload = await zoomSdkApi.getMeetingParticipants();
+              state.meetingParticipantsCount = Array.isArray(payload?.participants)
+                ? payload.participants.length
+                : 0;
+              participantsCountResolved = true;
             }
           } catch {
-            return;
+            participantsCountResolved = false;
+          }
+
+          if (!participantsCountResolved && previousCount > 0) {
+            state.meetingParticipantsCount = previousCount;
+          }
+
+          const detectedRoomId = await resolveRoomId();
+          applyRoomId(detectedRoomId);
+
+          if (
+            participantsCountResolved &&
+            previousCount > 0 &&
+            state.meetingParticipantsCount === 0 &&
+            state.running
+          ) {
+            state.elapsedMs = getElapsedMs();
+            state.startedAt = null;
+            state.running = false;
+            publishPresence();
+            render();
           }
         };
 
@@ -1242,29 +1304,8 @@
 
       async function initPresenceSync() {
         state.clientId = getClientId();
-        let roomId = "";
-        if (zoomSdkApi?.getMeetingContext) {
-          try {
-            const context = await zoomSdkApi.getMeetingContext();
-            roomId = getRoomIdFromMeetingContext(context);
-          } catch {}
-        }
-        if (!roomId && zoomSdkApi?.getRunningContext) {
-          try {
-            const runningContext = await zoomSdkApi.getRunningContext();
-            roomId = getRoomIdFromRunningContext(runningContext);
-          } catch {}
-        }
-        if (!roomId && zoomSdkApi?.getMeetingParticipants) {
-          try {
-            const participantsPayload = await zoomSdkApi.getMeetingParticipants();
-            roomId = getRoomIdFromParticipants(participantsPayload);
-          } catch {}
-        }
-        if (!roomId) {
-          roomId = getRoomIdFromUrlSignals();
-        }
-        state.roomId = roomId || "local-room";
+        const roomId = await resolveRoomId();
+        state.roomId = roomId;
         resetMeetingRuntimeState();
         setupBroadcastSync();
         setupFirebaseSync();
